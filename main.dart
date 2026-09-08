@@ -106,36 +106,106 @@ class KickoffApiService {
     return result is List ? result : [];
   }
 
+  Future<List<dynamic>> _readListCache(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(key);
+      if (raw == null || raw.isEmpty) return [];
+      final decoded = jsonDecode(raw);
+      return decoded is List ? decoded : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _writeListCache(String key, List<dynamic> value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, jsonEncode(value));
+    } catch (_) {}
+  }
+
+  String _leagueCacheKey(String kind, String leagueId, int? season) =>
+      'infofut_${kind}_${leagueId}_${season ?? 0}';
+
   Future<List<dynamic>> getLeagueFixtures(String leagueId, {int? season}) async {
     if (leagueId.trim().isEmpty) return [];
+    final key = _leagueCacheKey('fixtures', leagueId, season);
     final params = <String, String>{'league': leagueId};
     if (season != null) params['season'] = '$season';
-    final result = await _get('/fixtures', params);
-    return result is List ? result : [];
+    try {
+      final result = await _get('/fixtures', params);
+      final list = result is List ? result : <dynamic>[];
+      if (list.isNotEmpty) await _writeListCache(key, list);
+      return list;
+    } catch (e) {
+      final cached = await _readListCache(key);
+      if (cached.isNotEmpty) return cached;
+      rethrow;
+    }
+  }
+
+  Future<List<dynamic>> getTeamFixtures(String teamId, {int? season}) async {
+    if (teamId.trim().isEmpty) return [];
+    final params = <String, String>{'team': teamId};
+    if (season != null) params['season'] = '$season';
+    try {
+      final result = await _get('/fixtures', params);
+      return result is List ? result : [];
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<dynamic>> getLeagueStandings(String leagueId, {int? season}) async {
     if (leagueId.trim().isEmpty) return [];
+    final key = _leagueCacheKey('standings', leagueId, season);
     final params = <String, String>{'league': leagueId};
     if (season != null) params['season'] = '$season';
-    final result = await _get('/standings', params);
-    return result is List ? result : [];
+    try {
+      final result = await _get('/standings', params);
+      final list = result is List ? result : <dynamic>[];
+      if (list.isNotEmpty) await _writeListCache(key, list);
+      return list;
+    } catch (e) {
+      final cached = await _readListCache(key);
+      if (cached.isNotEmpty) return cached;
+      rethrow;
+    }
   }
 
   Future<List<dynamic>> getLeagueOdds(String leagueId, {int? season}) async {
     if (leagueId.trim().isEmpty) return [];
+    final key = _leagueCacheKey('odds', leagueId, season);
     final params = <String, String>{'league': leagueId};
     if (season != null) params['season'] = '$season';
-    final result = await _get('/odds', params);
-    return result is List ? result : [];
+    try {
+      final result = await _get('/odds', params);
+      final list = result is List ? result : <dynamic>[];
+      if (list.isNotEmpty) await _writeListCache(key, list);
+      return list;
+    } catch (e) {
+      final cached = await _readListCache(key);
+      if (cached.isNotEmpty) return cached;
+      rethrow;
+    }
   }
 
   Future<List<dynamic>> getLeagueTopScorers(String leagueId, {int? season}) async {
     if (leagueId.trim().isEmpty) return [];
+    final key = _leagueCacheKey('scorers', leagueId, season);
     final params = <String, String>{'league': leagueId};
     if (season != null) params['season'] = '$season';
-    final result = await _get('/topscorers', params);
-    return result is List ? result : [];
+    try {
+      final result = await _get('/topscorers', params);
+      final list = result is List ? result : <dynamic>[];
+      if (list.isNotEmpty) await _writeListCache(key, list);
+      return list;
+    } catch (e) {
+      final cached = await _readListCache(key);
+      if (cached.isNotEmpty) return cached;
+      rethrow;
+    }
   }
 
   String _dateOnly(DateTime date) {
@@ -176,12 +246,9 @@ class EspnFallbackService {
     final ymd = _ymd(date);
     final all = <dynamic>[];
 
-    final generic = await _scoreboard(
-      'all',
-      {'dates': ymd, 'limit': '500'},
-    );
-    all.addAll(generic);
-
+    // Não usamos o scoreboard genérico "all": ele perde o código da competição
+    // e pode fazer Brasileirão/Serie A serem confundidos. Cada evento vem
+    // identificado pela liga que originou a consulta.
     final leagueResults = await Future.wait(
       leagueCodes.map(
         (league) => _scoreboard(league, {'dates': ymd, 'limit': '500'}),
@@ -247,6 +314,43 @@ class EspnFallbackService {
     }
   }
 
+  String _espnLeagueName(String code) {
+    const names = <String, String>{
+      'eng.1': 'Premier League',
+      'eng.2': 'Championship',
+      'eng.3': 'League One',
+      'eng.4': 'League Two',
+      'esp.1': 'LaLiga',
+      'esp.2': 'LaLiga 2',
+      'ita.1': 'Serie A',
+      'ita.2': 'Serie B',
+      'ger.1': 'Bundesliga',
+      'ger.2': '2. Bundesliga',
+      'fra.1': 'Ligue 1',
+      'fra.2': 'Ligue 2',
+      'bra.1': 'Brasileirão',
+      'bra.2': 'Brasileirão Série B',
+      'mex.1': 'Liga MX',
+      'ned.1': 'Eredivisie',
+      'sco.1': 'Scottish Premiership',
+      'usa.1': 'MLS',
+      'usa.nwsl': 'NWSL',
+      'por.1': 'Primeira Liga',
+      'bel.1': 'Pro League',
+      'tur.1': 'Super Lig',
+      'arg.1': 'Liga Profesional',
+      'col.1': 'Liga BetPlay',
+      'chl.1': 'Primera División Chile',
+      'uru.1': 'Primera División Uruguay',
+      'ecu.1': 'LigaPro Ecuador',
+      'par.1': 'Copa de Primera',
+      'per.1': 'Liga 1',
+      'uefa.champions': 'Champions League',
+      'uefa.europa': 'Europa League',
+    };
+    return names[code] ?? 'Futebol';
+  }
+
   String _espnCountry(String code) {
     if (code.startsWith('ita.')) return 'Itália';
     if (code.startsWith('bra.')) return 'Brasil';
@@ -293,6 +397,30 @@ class EspnFallbackService {
     final normalizedStatus = completed ? 'FT' : (state == 'in' ? 'LIVE' : 'scheduled');
     final elapsed = _toInt(statusMap?['displayClock']?.toString().split(':').first) ?? _toInt(statusMap?['period']);
     final league = _asMap(event['season']) ?? _asMap(comp?['season']);
+
+    final normalizedEvents = <Map<String, dynamic>>[];
+    final details = _asList(comp?['details']);
+    for (final rawDetail in details) {
+      final detail = _asMap(rawDetail);
+      if (detail == null) continue;
+      final typeMap = _asMap(detail['type']);
+      final typeName = (detail['type'] ?? typeMap?['text'] ?? detail['text'] ?? '').toString().toLowerCase();
+      if (!typeName.contains('goal') && !typeName.contains('score')) continue;
+      final clock = _asMap(detail['clock']);
+      final display = (detail['clock'] is String ? detail['clock'] : clock?['displayValue'])?.toString() ?? '';
+      final minute = int.tryParse(display.split(':').first.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+      final team = _asMap(detail['team']);
+      final athletes = _asList(detail['athletes']);
+      final athlete = athletes.isNotEmpty ? _asMap(athletes.first) : null;
+      normalizedEvents.add({
+        'id': 'espn_goal_${detail['id'] ?? normalizedEvents.length}',
+        'type': 'Goal',
+        'time': {'elapsed': minute},
+        'team': {'id': _safeString(team?['id']), 'name': _safeString(team?['displayName'] ?? team?['name'])},
+        'player': {'name': _safeString(athlete?['displayName'] ?? athlete?['fullName'], 'Gol')},
+      });
+    }
+
     return {
       'id': 'espn_${_safeString(event['id'])}',
       'home': {'id': 'espn_${_safeString(home['id'])}', 'name': home['displayName'] ?? home['name'], 'logo': home['logo']},
@@ -302,11 +430,12 @@ class EspnFallbackService {
       'league': {
         'id': 'espn:$sourceLeagueCode',
         'code': sourceLeagueCode,
-        'name': _safeString(event['name'], _safeString(league?['displayName'], 'Futebol')),
+        'name': _espnLeagueName(sourceLeagueCode),
         'country': _espnCountry(sourceLeagueCode),
       },
       'date': event['date'],
       'source': 'espn',
+      'events': normalizedEvents,
     };
   }
 }
@@ -600,6 +729,22 @@ TeamInfo _findAwayTeam(dynamic fixture) {
       : const TeamInfo(id: 0, name: 'Visitante');
 }
 
+int? _scoreValue(dynamic raw, String side) {
+  final map = _asMap(raw);
+  if (map == null) return _toInt(raw);
+  final direct = _toInt(map[side]);
+  if (direct != null) return direct;
+  for (final key in const ['fulltime', 'current', 'display', 'final', 'regular', 'total']) {
+    final nested = _asMap(map[key]);
+    final value = _toInt(nested?[side]);
+    if (value != null) return value;
+  }
+  final goals = _asMap(map['goals']);
+  final value = _toInt(goals?[side]);
+  if (value != null) return value;
+  return null;
+}
+
 int? _scoreForTeam(dynamic fixture, int teamId) {
   final map = _asMap(fixture);
   if (map == null) return null;
@@ -614,11 +759,11 @@ int? _scoreForTeam(dynamic fixture, int teamId) {
   final awayId = _safeString(away?['id']);
 
   if (homeId.isNotEmpty && _localId(homeId) == teamId) {
-    return _toInt(score?['home']) ?? _toInt(map['homeScore']);
+    return _scoreValue(score, 'home') ?? _scoreValue(map['homeScore'], 'home');
   }
 
   if (awayId.isNotEmpty && _localId(awayId) == teamId) {
-    return _toInt(score?['away']) ?? _toInt(map['awayScore']);
+    return _scoreValue(score, 'away') ?? _scoreValue(map['awayScore'], 'away');
   }
 
   // Compatibilidade com formato antigo.
@@ -628,11 +773,11 @@ int? _scoreForTeam(dynamic fixture, int teamId) {
   final oldAwayId = _safeString(oldAway?['id']);
 
   if (oldHomeId.isNotEmpty && _localId(oldHomeId) == teamId) {
-    return _toInt(map['homeScore']) ?? _toInt(score?['home']);
+    return _scoreValue(map['homeScore'], 'home') ?? _scoreValue(score, 'home');
   }
 
   if (oldAwayId.isNotEmpty && _localId(oldAwayId) == teamId) {
-    return _toInt(map['awayScore']) ?? _toInt(score?['away']);
+    return _scoreValue(map['awayScore'], 'away') ?? _scoreValue(score, 'away');
   }
 
   for (final raw in _asList(map['scores'])) {
@@ -880,7 +1025,7 @@ MatchDetails _parseDetails(dynamic fixture) {
   final home = _findHomeTeam(fixture);
   final away = _findAwayTeam(fixture);
   final apiId = _safeString(map['id']);
-  final lineups = _parseLineups(map['lineups']);
+  final lineups = _parseLineups(map['lineups'], home.apiId, away.apiId);
   return MatchDetails(
     id: apiId.isEmpty ? 0 : _localId(apiId),
     apiId: apiId,
@@ -893,61 +1038,92 @@ MatchDetails _parseDetails(dynamic fixture) {
     venue: _findVenue(fixture),
     startTime: _findStartTime(fixture),
     events: _parseEvents(fixture),
-    stats: _parseStatistics(map['statistics']),
+    stats: _parseStatistics(map['statistics'], home.apiId, away.apiId),
     homeLineup: lineups.$1,
     awayLineup: lineups.$2,
   );
 }
 
-List<MatchStat> _parseStatistics(dynamic raw) {
-  final result = <MatchStat>[];
+List<MatchStat> _parseStatistics(dynamic raw, String homeApiId, String awayApiId) {
+  final table = <String, List<String>>{};
   for (final itemRaw in _asList(raw)) {
     final item = _asMap(itemRaw);
     if (item == null) continue;
-    final stats = _asMap(item['statistics']);
-    if (stats != null) {
-      final teamId = _safeString(item['teamId'] ?? _asMap(item['team'])?['id']);
-      for (final entry in stats.entries) {
-        final label = entry.key.toString();
-        final value = entry.value?.toString() ?? '-';
-        result.add(MatchStat(label: label, home: teamId.isNotEmpty && result.length.isEven ? value : '-', away: teamId.isNotEmpty && result.length.isOdd ? value : '-'));
+    final team = _asMap(item['team']);
+    final teamId = _safeString(item['teamId'] ?? item['team_id'] ?? team?['id']);
+    final isHome = teamId.isNotEmpty && (teamId == homeApiId || item['home'] == true || item['side']?.toString().toLowerCase() == 'home');
+    final statsList = _asList(item['statistics']);
+    if (statsList.isNotEmpty) {
+      for (final rawStat in statsList) {
+        final stat = _asMap(rawStat);
+        if (stat == null) continue;
+        final type = _asMap(stat['type']);
+        final label = _safeString(stat['name'] ?? type?['name'] ?? stat['label'], 'Estatística');
+        final value = _safeString(stat['value'] ?? stat['displayValue'] ?? stat['data'], '-');
+        final pair = table.putIfAbsent(label, () => ['', '']);
+        if (isHome) pair[0] = value;
+        else if (teamId.isNotEmpty && teamId == awayApiId) pair[1] = value;
       }
       continue;
     }
-    final type = _asMap(item['type']);
-    result.add(MatchStat(
-      label: _safeString(item['name'] ?? type?['name'], 'Estatística'),
-      home: _safeString(item['home'] ?? _asMap(item['data'])?['home'], '-'),
-      away: _safeString(item['away'] ?? _asMap(item['data'])?['away'], '-'),
-    ));
+    final label = _safeString(item['name'] ?? item['type'], 'Estatística');
+    final pair = table.putIfAbsent(label, () => ['', '']);
+    if (item['home'] != null) pair[0] = item['home'].toString();
+    if (item['away'] != null) pair[1] = item['away'].toString();
   }
-  return result;
+  return table.entries.map((e) => MatchStat(label: e.key, home: e.value[0].isEmpty ? '-' : e.value[0], away: e.value[1].isEmpty ? '-' : e.value[1])).toList();
 }
-
-(List<MatchLineup>, List<MatchLineup>) _parseLineups(dynamic raw) {
+(List<MatchLineup>, List<MatchLineup>) _parseLineups(dynamic raw, String homeApiId, String awayApiId) {
   final home = <MatchLineup>[];
   final away = <MatchLineup>[];
+  final homeId = homeApiId.trim();
+  final awayId = awayApiId.trim();
+
+  MatchLineup addPlayer(dynamic playerRaw) {
+    final p = _asMap(playerRaw) ?? {};
+    final player = _asMap(p['player']) ?? _asMap(p['athlete']);
+    final number = p['number'] ?? p['jersey_number'] ?? p['jersey'] ?? player?['jersey'];
+    final positionMap = _asMap(p['position']);
+    return MatchLineup(
+      player: _safeString(p['playerName'] ?? p['name'] ?? player?['name'] ?? player?['displayName'], 'Jogador'),
+      number: _safeString(number, '-'),
+      position: _safeString(p['pos'] ?? positionMap?['name'] ?? positionMap?['abbreviation'] ?? p['position'], ''),
+    );
+  }
+
   for (final itemRaw in _asList(raw)) {
     final item = _asMap(itemRaw);
     if (item == null) continue;
-    final teamId = _safeString(item['teamId'] ?? _asMap(item['team'])?['id']);
-    final add = (dynamic playerRaw) {
-      final p = _asMap(playerRaw) ?? {};
-      final player = _asMap(p['player']);
-      return MatchLineup(
-        player: _safeString(p['playerName'] ?? player?['name'], 'Jogador'),
-        number: _safeString(p['number'] ?? p['jersey_number'], '-'),
-        position: _safeString(p['pos'] ?? p['position'], ''),
-      );
-    };
+    final team = _asMap(item['team']);
+    final teamId = _safeString(item['teamId'] ?? item['team_id'] ?? team?['id']);
+    final isHome = teamId.isNotEmpty && teamId == homeId;
+    final isAway = teamId.isNotEmpty && teamId == awayId;
+    final target = isAway ? away : (isHome ? home : (home.isEmpty ? home : away));
+
     final starters = _asList(item['startXI']);
+    final startersAlt = _asList(item['start_xi']);
     final substitutes = _asList(item['substitutes']);
-    final target = teamId == '' ? home : (home.isEmpty ? home : away);
-    for (final p in [...starters, ...substitutes]) target.add(add(p));
+    final players = _asList(item['players']);
+    final source = [...starters, ...startersAlt, ...players, ...substitutes];
+    for (final p in source) {
+      final parsed = addPlayer(p);
+      if (parsed.player.trim().isNotEmpty) target.add(parsed);
+    }
+  }
+
+  // Alguns formatos retornam uma lista simples de jogadores dentro de cada lado.
+  if (home.isEmpty && away.isEmpty && _asList(raw).isNotEmpty) {
+    final items = _asList(raw);
+    for (final rawItem in items) {
+      final item = _asMap(rawItem) ?? {};
+      final team = _asMap(item['team']);
+      final teamId = _safeString(item['teamId'] ?? team?['id']);
+      final target = teamId == awayId ? away : home;
+      target.add(addPlayer(item));
+    }
   }
   return (home, away);
 }
-
 class _ProfileMenuItem extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -2703,14 +2879,14 @@ class _HomePageState extends State<HomePage> {
               decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(.045)))),
               child: Row(
                 children: [
-                  const Icon(Icons.flag_outlined, size: 22, color: Colors.white70),
+                  Text(_countryFlag(country), style: const TextStyle(fontSize: 21)),
                   const SizedBox(width: 11),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(country.toUpperCase(), style: const TextStyle(color: Colors.white54, fontSize: 11.5, fontWeight: FontWeight.w900)),
+                        Text(country.toUpperCase(), style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w900)),
                         Text(league, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
                       ],
                     ),
@@ -4085,7 +4261,7 @@ class _LivePageState extends State<LivePage> {
                                   ),
                                 ),
                                 if (liveCount > 0) ...[
-                                  Text('$liveCount AO VIVO', style: const TextStyle(color: Colors.red, fontSize: 11.5, fontWeight: FontWeight.w900)),
+                                  Text('$liveCount AO VIVO', style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w900)),
                                   const SizedBox(width: 4),
                                 ],
                                 IconButton(
@@ -4779,7 +4955,10 @@ class _LeagueDetailsPageState extends State<LeagueDetailsPage> with SingleTicker
       compact: true,
       match: match,
       favorite: false,
+      api: widget.api,
       onFavorite: () {},
+      onHomeTeamTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailsPage(api: widget.api, team: match.home, season: match.leagueSeason))),
+      onAwayTeamTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailsPage(api: widget.api, team: match.away, season: match.leagueSeason))),
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
@@ -4824,7 +5003,7 @@ class _LeagueDetailsPageState extends State<LeagueDetailsPage> with SingleTicker
                     label: Text(value),
                     selected: selected,
                     onSelected: (_) => setState(() => standingsFilter = value),
-                    labelStyle: TextStyle(color: selected ? Colors.white : Colors.white70, fontSize: 10, fontWeight: FontWeight.w900),
+                    labelStyle: TextStyle(color: selected ? Colors.white : Colors.white70, fontSize: 12, fontWeight: FontWeight.w900),
                     selectedColor: const Color(0xFF0C5A83),
                     backgroundColor: const Color(0xFF10232D),
                     side: BorderSide(color: selected ? const Color(0xFF73BFFF) : Colors.white12),
@@ -4871,7 +5050,7 @@ class _LeagueDetailsPageState extends State<LeagueDetailsPage> with SingleTicker
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 7),
             child: Row(children: [
               const SizedBox(width: 25),
-              const Expanded(child: Text('EQUIPE', style: TextStyle(color: Colors.white54, fontSize: 11.5, fontWeight: FontWeight.w900))),
+              const Expanded(child: Text('EQUIPE', style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w900))),
               _standingsCell('J', 'J'),
               _standingsCell('G', 'G'),
               _standingsCell('P', 'P', strong: true),
@@ -4904,7 +5083,7 @@ class _LeagueDetailsPageState extends State<LeagueDetailsPage> with SingleTicker
             SizedBox(width: 25, child: Text('$rank', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 10))),
             if (logo != null && logo.isNotEmpty) ...[ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.network(logo, width: 22, height: 22, fit: BoxFit.contain)), const SizedBox(width: 7)] else const SizedBox(width: 29),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_safeString(team['name'], 'Time'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+              Text(_safeString(team['name'], 'Time'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
               if (standingsFilter == 'Forma' && form.isNotEmpty) Text(form, style: const TextStyle(color: Colors.white54, fontSize: 10.5, fontWeight: FontWeight.w800)),
               if ((standingsFilter == 'Casa' || standingsFilter == 'Fora') && (goalsFor != null || goalsAgainst != null)) Text('$goalsFor:$goalsAgainst', style: const TextStyle(color: Colors.white54, fontSize: 10.5, fontWeight: FontWeight.w800)),
             ])),
@@ -5087,7 +5266,7 @@ class _LeagueDetailsPageState extends State<LeagueDetailsPage> with SingleTicker
                 child: Text(
                   _resultDate(match),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white60, fontSize: 11.5, fontWeight: FontWeight.w900),
+                  style: const TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w900),
                 ),
               ),
               const SizedBox(width: 4),
@@ -5893,6 +6072,9 @@ class MatchCard extends StatelessWidget {
   final bool favoriteAway;
   final VoidCallback? onFavoriteHome;
   final VoidCallback? onFavoriteAway;
+  final KickoffApiService? api;
+  final VoidCallback? onHomeTeamTap;
+  final VoidCallback? onAwayTeamTap;
 
   const MatchCard({
     super.key,
@@ -5905,6 +6087,9 @@ class MatchCard extends StatelessWidget {
     this.favoriteAway = false,
     this.onFavoriteHome,
     this.onFavoriteAway,
+    this.api,
+    this.onHomeTeamTap,
+    this.onAwayTeamTap,
   });
 
   @override
@@ -5923,7 +6108,7 @@ class MatchCard extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Column(
               children: [
                 _compactTeamRow(
@@ -6004,12 +6189,10 @@ class MatchCard extends StatelessWidget {
   Widget _goalLabels(TeamInfo team, ColorScheme cs) {
     final goals = _goalsForTeam(team);
     if (goals.isEmpty) return const SizedBox.shrink();
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: goals.map((g) => Padding(
-        padding: const EdgeInsets.only(left: 6),
-        child: Text('⚽${g.minute}\'', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurfaceVariant)),
-      )).toList(),
+    return Wrap(
+      spacing: 4,
+      runSpacing: 2,
+      children: goals.map((g) => Text('⚽${g.minute}\'', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: cs.onSurfaceVariant))).toList(),
     );
   }
 
@@ -6025,7 +6208,7 @@ class MatchCard extends StatelessWidget {
     final isFavorite = home ? favoriteHome : favoriteAway;
     final callback = home ? (onFavoriteHome ?? onFavorite) : (onFavoriteAway ?? onFavorite);
     return SizedBox(
-      height: 29,
+      height: 34,
       child: Row(
         children: [
           SizedBox(
@@ -6038,14 +6221,20 @@ class MatchCard extends StatelessWidget {
               icon: Icon(isFavorite ? Icons.star : Icons.star_border, size: 18, color: isFavorite ? Colors.amber : cs.onSurfaceVariant),
             ),
           ),
-          ClubShield(team: team, size: 23),
-          const SizedBox(width: 6),
+          InkWell(
+            onTap: home ? onHomeTeamTap : onAwayTeamTap,
+            child: Row(children: [ClubShield(team: team, size: 23), const SizedBox(width: 6),]),
+          ),
           Expanded(
-            child: Row(
-              children: [
-                Flexible(child: Text(team.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: cs.onSurface))),
-                _goalLabels(team, cs),
-              ],
+            child: InkWell(
+              onTap: home ? onHomeTeamTap : onAwayTeamTap,
+              child: Row(
+                children: [
+                  Flexible(child: Text(team.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: cs.onSurface))),
+                  const SizedBox(width: 4),
+                  Flexible(child: _goalLabels(team, cs)),
+                ],
+              ),
             ),
           ),
           if (live && home) ...[
@@ -6207,7 +6396,7 @@ class _MatchDetailsPageState extends State<MatchDetailsPage>
   @override
   void initState() {
     super.initState();
-    tabs = TabController(length: 5, vsync: this);
+    tabs = TabController(length: 6, vsync: this);
     _load();
   }
 
@@ -6474,10 +6663,31 @@ class _MatchDetailsPageState extends State<MatchDetailsPage>
                 const Icon(Icons.shield, size: 17),
                 const SizedBox(width: 7),
                 Expanded(
-                  child: Text(
-                    '${widget.match.country}: ${current.league}'.trim(),
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-                    overflow: TextOverflow.ellipsis,
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => LeagueDetailsPage(
+                            api: widget.api,
+                            leagueName: current.league,
+                            country: widget.match.country,
+                            leagueId: widget.match.leagueApiId,
+                            leagueLogo: widget.match.leagueLogo,
+                            season: widget.match.leagueSeason,
+                            initialMatches: [widget.match],
+                          ),
+                        ),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        '${widget.match.country}: ${current.league}'.trim(),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                 ),
                 const Icon(Icons.chevron_right, size: 18),
@@ -6494,6 +6704,7 @@ class _MatchDetailsPageState extends State<MatchDetailsPage>
               labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
               tabs: const [
                 Tab(text: 'SUMÁRIO'),
+                Tab(text: 'CLASSIFICAÇÃO'),
                 Tab(text: 'ESTATÍSTICAS'),
                 Tab(text: 'FORMAÇÕES'),
                 Tab(text: 'ESTATÍSTICAS DE JOGADOR'),
@@ -6515,6 +6726,7 @@ class _MatchDetailsPageState extends State<MatchDetailsPage>
                         controller: tabs,
                         children: [
                           _buildTimeline(current),
+                          _buildMatchStandings(current),
                           _buildStats(current),
                           _buildLineups(current),
                           _buildPlayerStatsPlaceholder(current),
@@ -6596,6 +6808,45 @@ class _MatchDetailsPageState extends State<MatchDetailsPage>
           style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ),
+    );
+  }
+
+  Widget _buildMatchStandings(MatchDetails match) {
+    return FutureBuilder<List<dynamic>>(
+      future: widget.api.getLeagueStandings(widget.match.leagueApiId, season: widget.match.leagueSeason),
+      builder: (context, snapshot) {
+        final rows = snapshot.data ?? const <dynamic>[];
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (rows.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Classificação não disponível para esta competição.', textAlign: TextAlign.center)));
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+          itemCount: rows.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return const Padding(padding: EdgeInsets.fromLTRB(4, 4, 4, 8), child: Row(children: [SizedBox(width: 28), Expanded(child: Text('EQUIPE', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.w900))), SizedBox(width: 34, child: Text('J', textAlign: TextAlign.center)), SizedBox(width: 34, child: Text('G', textAlign: TextAlign.center)), SizedBox(width: 34, child: Text('P', textAlign: TextAlign.center))]));
+            }
+            final item = _asMap(rows[index - 1]) ?? {};
+            final team = _asMap(item['team']) ?? {};
+            final all = _asMap(item['all']) ?? item;
+            final teamId = _safeString(team['id']);
+            final highlighted = teamId == match.home.apiId || teamId == match.away.apiId;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
+              decoration: BoxDecoration(color: highlighted ? const Color(0xFF12384A) : Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)),
+              child: Row(children: [
+                SizedBox(width: 28, child: Text('${item['rank'] ?? index}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900))),
+                if ((team['logo']?.toString() ?? '').isNotEmpty) Image.network(team['logo'].toString(), width: 23, height: 23, fit: BoxFit.contain) else const SizedBox(width: 23, height: 23),
+                const SizedBox(width: 7),
+                Expanded(child: Text(_safeString(team['name'], 'Time'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800))),
+                SizedBox(width: 34, child: Text('${all['played'] ?? item['played'] ?? '-'}', textAlign: TextAlign.center)),
+                SizedBox(width: 34, child: Text('${all['win'] ?? all['wins'] ?? item['wins'] ?? '-'}', textAlign: TextAlign.center)),
+                SizedBox(width: 34, child: Text('${item['points'] ?? item['pts'] ?? '-'}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900))),
+              ]),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -7058,6 +7309,70 @@ class _LineupSection
 }
 
 // ============================================================
+// PÁGINA DO TIME
+// ============================================================
+
+class TeamDetailsPage extends StatefulWidget {
+  final KickoffApiService api;
+  final TeamInfo team;
+  final int? season;
+
+  const TeamDetailsPage({super.key, required this.api, required this.team, this.season});
+
+  @override
+  State<TeamDetailsPage> createState() => _TeamDetailsPageState();
+}
+
+class _TeamDetailsPageState extends State<TeamDetailsPage> with SingleTickerProviderStateMixin {
+  late final TabController tabs;
+  List<dynamic> fixtures = [];
+  List<dynamic> standings = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    tabs = TabController(length: 4, vsync: this);
+    _load();
+  }
+
+  @override
+  void dispose() { tabs.dispose(); super.dispose(); }
+
+  Future<void> _load() async {
+    setState(() => loading = true);
+    try {
+      if (widget.team.apiId.isNotEmpty) {
+        fixtures = await widget.api.getTeamFixtures(widget.team.apiId, season: widget.season);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => loading = false);
+  }
+
+  List<LiveMatch> _parsed() => fixtures.map(_parseLiveMatch).where((m) => m.id != 0).toList();
+
+  @override
+  Widget build(BuildContext context) {
+    final games = _parsed();
+    final results = games.where((m) => m.isFinished).toList()..sort((a,b) => (b.startTime?.millisecondsSinceEpoch ?? 0).compareTo(a.startTime?.millisecondsSinceEpoch ?? 0));
+    final calendar = games.where((m) => !m.isFinished).toList()..sort((a,b) => (a.startTime?.millisecondsSinceEpoch ?? 0).compareTo(b.startTime?.millisecondsSinceEpoch ?? 0));
+    return Scaffold(
+      appBar: AppBar(title: const Text('Futebol'), actions: [IconButton(onPressed: () {}, icon: const Icon(Icons.star_border))]),
+      body: Column(children: [
+        Container(color: const Color(0xFF0A3142), padding: const EdgeInsets.all(14), child: Row(children: [ClubShield(team: widget.team, size: 58), const SizedBox(width: 12), Expanded(child: Text(widget.team.name, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)))])),
+        TabBar(controller: tabs, isScrollable: true, tabs: const [Tab(text:'RESUMO'), Tab(text:'CALENDÁRIO'), Tab(text:'RESULTADOS'), Tab(text:'CLASSIFICAÇÃO')]),
+        Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : TabBarView(controller: tabs, children: [
+          ListView(padding: const EdgeInsets.all(10), children: [const Text('Próximos jogos', style: TextStyle(fontSize:16,fontWeight:FontWeight.w900)), const SizedBox(height:6), ...calendar.take(5).map((m) => MatchCard(compact:true, match:m, favorite:false, onFavorite:(){}, onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MatchDetailsPage(match:m,api:widget.api,favorites:<int>{},onToggleFavorite:(_ )async{})))))]),
+          ListView(padding: const EdgeInsets.all(10), children: calendar.map((m) => MatchCard(compact:true, match:m, favorite:false, onFavorite:(){}, onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MatchDetailsPage(match:m,api:widget.api,favorites:<int>{},onToggleFavorite:(_ )async{}))))).toList()),
+          ListView(padding: const EdgeInsets.all(10), children: results.map((m) => MatchCard(compact:true, match:m, favorite:false, onFavorite:(){}, onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MatchDetailsPage(match:m,api:widget.api,favorites:<int>{},onToggleFavorite:(_ )async{}))))).toList()),
+          ListView(padding: const EdgeInsets.all(10), children: [const Center(child: Text('Classificação da competição disponível ao abrir a liga.'))]),
+        ])),
+      ]),
+    );
+  }
+}
+
+// ============================================================
 // H2H
 // ============================================================
 
@@ -7086,6 +7401,13 @@ Map<String, dynamic> _normalizeH2HFixture(dynamic raw) {
     currentScore['home'] ??= goals['home'];
     currentScore['away'] ??= goals['away'];
     source['score'] = currentScore;
+  }
+  final score = _asMap(source['score']);
+  if (score != null) {
+    final homeValue = _scoreValue(score, 'home');
+    final awayValue = _scoreValue(score, 'away');
+    if (homeValue != null) source['homeScore'] = homeValue;
+    if (awayValue != null) source['awayScore'] = awayValue;
   }
 
   // Some responses keep the date inside fixture.date.
