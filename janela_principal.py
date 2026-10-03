@@ -2540,9 +2540,9 @@ class Janela(QMainWindow):
             "Descricao ERP",
             "Pr Cpra ERP",
             "Qtd Ult Ent",
-            "Pr Ult Cpra Unit.",
+            "Pr Ult Cpra Unit",
             "Pr Ult Cpra Ant",
-            "Dt Ult Compra",
+            "Dt Ult Cpra",
             "Cod F",
             "Descricao XML",
             "Emb",
@@ -5257,31 +5257,11 @@ class Janela(QMainWindow):
 
             largura = self.tabela.columnWidth(coluna)
 
-            # A Descricao XML usa QLabel/RichText dentro da celula.
-            # O QTableWidget nem sempre calcula corretamente a largura
-            # desse tipo de widget. Mede o tamanho real de cada QLabel.
-            if coluna == 8:
-                maior_largura = 0
-
-                for linha in range(self.tabela.rowCount()):
-                    widget = self.tabela.cellWidget(linha, coluna)
-
-                    if isinstance(widget, QLabel):
-                        maior_largura = max(
-                            maior_largura,
-                            widget.sizeHint().width()
-                        )
-
-                largura = max(
-                    largura,
-                    maior_largura
-                )
-
             # Pequena folga para evitar que o ultimo caractere fique
             # encostado ou cortado pela borda da celula.
             self.tabela.setColumnWidth(
                 coluna,
-                max(40, largura + 16)
+                max(40, largura + 12)
             )
 
 
