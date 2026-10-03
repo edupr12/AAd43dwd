@@ -1,7807 +1,5943 @@
-import 'dart:async';
-import 'dart:convert';
+# -*- coding: utf-8 -*-
 
-import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import sys
+import re
+import os
+import json
+import xml.etree.ElementTree as ET
+import json as _json_aux
+import urllib.request
+import urllib.parse
+import html as _html
+from html.parser import HTMLParser
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
 
-  try {
-    await dotenv.load(fileName: '.env');
-  } catch (_) {}
+from PySide6.QtGui import QColor, QAction
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRunnable, QThreadPool, QObject, Signal
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QLabel,
+    QFileDialog,
+    QTableWidget,
+    QTableWidgetItem,
+    QMessageBox,
+    QLineEdit,
+    QCheckBox,
+    QMenu,
+    QHeaderView,
+    QFormLayout,
+    QGroupBox,
+)
 
-  runApp(const InfoFutApp());
+from leitor_xml import LeitorXML
+from baixador_xml import baixar_xml_do_pdf
+
+
+# ============================================================
+# CONFIGURAÇÃO DE ACESSO
+# ============================================================
+
+# ------------------------------------------------------------
+# SENHA PARA ENTRAR NA CONFIGURAÇÃO DO BANCO
+# ------------------------------------------------------------
+#
+# Você pode trocar diretamente aqui.
+#
+# Ou definir uma variável de ambiente:
+#
+# Windows:
+# set XML_APP_PASSWORD=123456
+#
+# ------------------------------------------------------------
+
+SENHA_ACESSO = os.getenv(
+    "XML_APP_PASSWORD",
+    "1234"
+)
+
+
+# ============================================================
+# CAMPO ANIMADO
+# ============================================================
+
+class CampoAnimado(QLineEdit):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setMouseTracking(True)
+
+        self.setStyleSheet(
+            """
+            QLineEdit {
+                background-color: white;
+                color: black;
+                border: 1px solid #cccccc;
+                border-radius: 5px;
+                padding: 5px;
+            }
+
+            QLineEdit:hover {
+                background-color: #f4f9ff;
+                border: 1px solid #5b9bd5;
+            }
+
+            QLineEdit:focus {
+                background-color: #ffffff;
+                border: 2px solid #4a90e2;
+            }
+
+            QLineEdit:read-only {
+                background-color: #ffffff;
+                color: black;
+            }
+
+            QLineEdit:read-only:hover {
+                background-color: #f4f9ff;
+                border: 1px solid #5b9bd5;
+            }
+            """
+        )
+
+
+# ============================================================
+# CHECKBOX ANIMADO
+# ============================================================
+
+class CheckBoxAnimado(QCheckBox):
+
+    def __init__(self, texto, parent=None):
+        super().__init__(texto, parent)
+
+        self.setMouseTracking(True)
+
+        self.setStyleSheet(
+            """
+            QCheckBox {
+                color: #111111;
+                background-color: #ffffff;
+                padding: 5px;
+                border: 1px solid #d0d0d0;
+                border-radius: 5px;
+            }
+
+            QCheckBox:hover {
+                color: #0b3d91;
+                background-color: #eaf3ff;
+                border: 1px solid #5b9bd5;
+            }
+
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+            }
+
+            QCheckBox::indicator:unchecked {
+                border: 1px solid #999999;
+                background-color: white;
+                border-radius: 3px;
+            }
+
+            QCheckBox::indicator:unchecked:hover {
+                border: 2px solid #5b9bd5;
+                background-color: #f0f7ff;
+            }
+
+            QCheckBox::indicator:checked {
+                border: 1px solid #357abd;
+                background-color: #5b9bd5;
+                border-radius: 3px;
+            }
+            """
+        )
+
+
+# ============================================================
+# BOTÃO ANIMADO
+# ============================================================
+
+class BotaoAnimado(QPushButton):
+
+    def __init__(self, texto, parent=None):
+        super().__init__(texto, parent)
+
+        self._animacao = QPropertyAnimation(
+            self,
+            b"geometry"
+        )
+
+        self._animacao.setDuration(120)
+
+        self._animacao.setEasingCurve(
+            QEasingCurve.OutCubic
+        )
+
+        self._geometria_original = None
+
+        self.setCursor(
+            Qt.PointingHandCursor
+        )
+
+        self.setMouseTracking(True)
+
+        self.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #f0f0f0;
+                color: #111111;
+                border: 1px solid #bdbdbd;
+                border-radius: 6px;
+                padding: 8px 14px;
+                font-weight: bold;
+            }
+
+            QPushButton:hover {
+                background-color: #dcecff;
+                color: #0b3d91;
+                border: 1px solid #5b9bd5;
+            }
+
+            QPushButton:pressed {
+                background-color: #b9d7f5;
+                color: #082b66;
+            }
+
+            QPushButton:disabled {
+                background-color: #dddddd;
+                color: #888888;
+            }
+            """
+        )
+
+    def enterEvent(self, event):
+
+        if self._geometria_original is None:
+            self._geometria_original = self.geometry()
+
+        geometria = self._geometria_original
+
+        nova_geometria = geometria.adjusted(
+            -2,
+            -2,
+            2,
+            2
+        )
+
+        self._animacao.stop()
+
+        self._animacao.setStartValue(
+            self.geometry()
+        )
+
+        self._animacao.setEndValue(
+            nova_geometria
+        )
+
+        self._animacao.start()
+
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+
+        if self._geometria_original is not None:
+
+            self._animacao.stop()
+
+            self._animacao.setStartValue(
+                self.geometry()
+            )
+
+            self._animacao.setEndValue(
+                self._geometria_original
+            )
+
+            self._animacao.start()
+
+        super().leaveEvent(event)
+
+
+# ============================================================
+# TELA DE SENHA
+# ============================================================
+
+class TelaSenha(QWidget):
+
+    def __init__(self):
+        super().__init__()
+
+        self.tela_banco = None
+
+        self.setWindowTitle(
+            "Acesso ao sistema"
+        )
+
+        self.setFixedSize(
+            420,
+            230
+        )
+
+        layout = QVBoxLayout(
+            self
+        )
+
+        layout.setContentsMargins(
+            30,
+            25,
+            30,
+            25
+        )
+
+        titulo = QLabel(
+            "Acesso ao sistema"
+        )
+
+        titulo.setAlignment(
+            Qt.AlignCenter
+        )
+
+        titulo.setStyleSheet(
+            """
+            QLabel {
+                font-size: 20px;
+                font-weight: bold;
+                color: #0b3d91;
+                padding: 8px;
+            }
+            """
+        )
+
+        layout.addWidget(
+            titulo
+        )
+
+        descricao = QLabel(
+            "Digite a senha para configurar "
+            "a conexão com o banco de dados."
+        )
+
+        descricao.setAlignment(
+            Qt.AlignCenter
+        )
+
+        descricao.setWordWrap(
+            True
+        )
+
+        layout.addWidget(
+            descricao
+        )
+
+        self.txtSenha = CampoAnimado()
+
+        self.txtSenha.setPlaceholderText(
+            "Senha de acesso"
+        )
+
+        self.txtSenha.setEchoMode(
+            QLineEdit.Password
+        )
+
+        self.txtSenha.returnPressed.connect(
+            self.verificar_senha
+        )
+
+        layout.addWidget(
+            self.txtSenha
+        )
+
+        self.lblErro = QLabel()
+
+        self.lblErro.setAlignment(
+            Qt.AlignCenter
+        )
+
+        self.lblErro.setStyleSheet(
+            """
+            QLabel {
+                color: #c00000;
+                font-weight: bold;
+            }
+            """
+        )
+
+        layout.addWidget(
+            self.lblErro
+        )
+
+        self.btEntrar = BotaoAnimado(
+            "Continuar"
+        )
+
+        self.btEntrar.clicked.connect(
+            self.verificar_senha
+        )
+
+        layout.addWidget(
+            self.btEntrar
+        )
+
+        self.txtSenha.setFocus()
+
+    def verificar_senha(self):
+
+        senha = self.txtSenha.text()
+
+        if senha == SENHA_ACESSO:
+
+            self.lblErro.clear()
+
+            self.btEntrar.setEnabled(
+                False
+            )
+
+            self.tela_banco = TelaBancoDados()
+
+            self.tela_banco.show()
+
+            self.close()
+
+        else:
+
+            self.lblErro.setText(
+                "Senha incorreta."
+            )
+
+            self.txtSenha.clear()
+
+            self.txtSenha.setFocus()
+
+
+# ============================================================
+# TELA DE CONFIGURAÇÃO DO POSTGRESQL
+# ============================================================
+
+class TelaBancoDados(QWidget):
+
+    def __init__(self):
+        super().__init__()
+
+        self.janela_principal = None
+        self.conexao = None
+
+        self.setWindowTitle(
+            "Conexão com PostgreSQL"
+        )
+
+        self.setFixedSize(
+            520,
+            480
+        )
+
+        layout = QVBoxLayout(
+            self
+        )
+
+        layout.setContentsMargins(
+            30,
+            25,
+            30,
+            25
+        )
+
+        # ====================================================
+        # TÍTULO
+        # ====================================================
+
+        titulo = QLabel(
+            "Conexão com banco de dados"
+        )
+
+        titulo.setAlignment(
+            Qt.AlignCenter
+        )
+
+        titulo.setStyleSheet(
+            """
+            QLabel {
+                font-size: 21px;
+                font-weight: bold;
+                color: #0b3d91;
+                padding: 8px;
+            }
+            """
+        )
+
+        layout.addWidget(
+            titulo
+        )
+
+        subtitulo = QLabel(
+            "Banco de dados: PostgreSQL"
+        )
+
+        subtitulo.setAlignment(
+            Qt.AlignCenter
+        )
+
+        subtitulo.setStyleSheet(
+            """
+            QLabel {
+                font-size: 14px;
+                font-weight: bold;
+                color: #444444;
+                padding-bottom: 10px;
+            }
+            """
+        )
+
+        layout.addWidget(
+            subtitulo
+        )
+
+        # ====================================================
+        # GRUPO
+        # ====================================================
+
+        grupo = QGroupBox(
+            "Dados da conexão"
+        )
+
+        formulario = QFormLayout(
+            grupo
+        )
+
+        formulario.setContentsMargins(
+            20,
+            20,
+            20,
+            20
+        )
+
+        # ----------------------------------------------------
+        # HOST
+        # ----------------------------------------------------
+
+        self.txtHost = CampoAnimado()
+
+        self.txtHost.setPlaceholderText(
+            "Ex.: 192.168.0.10"
+        )
+
+        formulario.addRow(
+            "IP / Host:",
+            self.txtHost
+        )
+
+        # ----------------------------------------------------
+        # PORTA
+        # ----------------------------------------------------
+
+        self.txtPorta = CampoAnimado()
+
+        self.txtPorta.setText(
+            "5432"
+        )
+
+        self.txtPorta.setPlaceholderText(
+            "5432"
+        )
+
+        formulario.addRow(
+            "Porta:",
+            self.txtPorta
+        )
+
+        # ----------------------------------------------------
+        # BANCO
+        # ----------------------------------------------------
+
+        self.txtBanco = CampoAnimado()
+
+        self.txtBanco.setPlaceholderText(
+            "Nome do banco"
+        )
+
+        formulario.addRow(
+            "Banco:",
+            self.txtBanco
+        )
+
+        # ----------------------------------------------------
+        # USUÁRIO
+        # ----------------------------------------------------
+
+        self.txtUsuario = CampoAnimado()
+
+        self.txtUsuario.setPlaceholderText(
+            "Usuário PostgreSQL"
+        )
+
+        formulario.addRow(
+            "Usuário:",
+            self.txtUsuario
+        )
+
+        # ----------------------------------------------------
+        # SENHA DO BANCO
+        # ----------------------------------------------------
+
+        self.txtSenhaBanco = CampoAnimado()
+
+        self.txtSenhaBanco.setPlaceholderText(
+            "Senha PostgreSQL"
+        )
+
+        self.txtSenhaBanco.setEchoMode(
+            QLineEdit.Password
+        )
+
+        formulario.addRow(
+            "Senha:",
+            self.txtSenhaBanco
+        )
+
+        layout.addWidget(
+            grupo
+        )
+
+        # ====================================================
+        # STATUS
+        # ====================================================
+
+        self.lblStatus = QLabel(
+            "Informe os dados do PostgreSQL."
+        )
+
+        self.lblStatus.setWordWrap(
+            True
+        )
+
+        self.lblStatus.setAlignment(
+            Qt.AlignCenter
+        )
+
+        self.lblStatus.setStyleSheet(
+            """
+            QLabel {
+                color: #444444;
+                padding: 8px;
+            }
+            """
+        )
+
+        layout.addWidget(
+            self.lblStatus
+        )
+
+        # ====================================================
+        # BOTÃO TESTAR
+        # ====================================================
+
+        self.btConectar = BotaoAnimado(
+            "Testar conexão e entrar"
+        )
+
+        self.btConectar.clicked.connect(
+            self.testar_conexao
+        )
+
+        layout.addWidget(
+            self.btConectar
+        )
+
+        # ====================================================
+        # ENTER
+        # ====================================================
+
+        self.txtSenhaBanco.returnPressed.connect(
+            self.testar_conexao
+        )
+
+        self.carregar_configuracao_banco()
+
+    # ========================================================
+    # ARQUIVO CONFIG BANCO
+    # ========================================================
+
+    def caminho_config_banco(self):
+
+        return os.path.join(
+            os.path.dirname(
+                os.path.abspath(__file__)
+            ),
+            "config_banco.json"
+        )
+
+    # ========================================================
+    # CARREGAR CONFIGURAÇÃO
+    # ========================================================
+
+    def carregar_configuracao_banco(self):
+
+        caminho = self.caminho_config_banco()
+
+        if not os.path.exists(
+            caminho
+        ):
+            return
+
+        try:
+
+            with open(
+                caminho,
+                "r",
+                encoding="utf-8"
+            ) as arquivo:
+
+                dados = json.load(
+                    arquivo
+                )
+
+            self.txtHost.setText(
+                str(
+                    dados.get(
+                        "host",
+                        ""
+                    )
+                )
+            )
+
+            self.txtPorta.setText(
+                str(
+                    dados.get(
+                        "porta",
+                        "5432"
+                    )
+                )
+            )
+
+            self.txtBanco.setText(
+                str(
+                    dados.get(
+                        "banco",
+                        ""
+                    )
+                )
+            )
+
+            self.txtUsuario.setText(
+                str(
+                    dados.get(
+                        "usuario",
+                        ""
+                    )
+                )
+            )
+
+            # ------------------------------------------------
+            # NÃO CARREGA A SENHA DO BANCO.
+            # ------------------------------------------------
+            #
+            # Por segurança, ela deve ser digitada.
+            #
+            self.txtSenhaBanco.clear()
+
+        except Exception:
+            pass
+
+    # ========================================================
+    # SALVAR CONFIGURAÇÃO
+    # ========================================================
+
+    def salvar_configuracao_banco(self):
+
+        dados = {
+            "host": self.txtHost.text().strip(),
+            "porta": self.txtPorta.text().strip(),
+            "banco": self.txtBanco.text().strip(),
+            "usuario": self.txtUsuario.text().strip(),
+        }
+
+        try:
+
+            with open(
+                self.caminho_config_banco(),
+                "w",
+                encoding="utf-8"
+            ) as arquivo:
+
+                json.dump(
+                    dados,
+                    arquivo,
+                    ensure_ascii=False,
+                    indent=4
+                )
+
+        except Exception:
+            pass
+
+    # ========================================================
+    # TESTAR POSTGRESQL
+    # ========================================================
+
+    def testar_conexao(self):
+
+        if psycopg2 is None:
+
+            QMessageBox.critical(
+                self,
+                "PostgreSQL",
+                (
+                    "O módulo psycopg2 não está instalado.\n\n"
+                    "Instale com:\n\n"
+                    "pip install psycopg2-binary"
+                )
+            )
+
+            return
+
+        host = self.txtHost.text().strip()
+
+        porta = self.txtPorta.text().strip()
+
+        banco = self.txtBanco.text().strip()
+
+        usuario = self.txtUsuario.text().strip()
+
+        senha = self.txtSenhaBanco.text()
+
+        # ====================================================
+        # VALIDAÇÃO
+        # ====================================================
+
+        if not host:
+
+            self.mostrar_erro(
+                "Informe o IP / Host do PostgreSQL."
+            )
+
+            self.txtHost.setFocus()
+
+            return
+
+        if not porta:
+
+            self.mostrar_erro(
+                "Informe a porta do PostgreSQL."
+            )
+
+            self.txtPorta.setFocus()
+
+            return
+
+        try:
+
+            porta_numero = int(
+                porta
+            )
+
+        except ValueError:
+
+            self.mostrar_erro(
+                "A porta precisa ser um número."
+            )
+
+            self.txtPorta.setFocus()
+
+            return
+
+        if porta_numero < 1 or porta_numero > 65535:
+
+            self.mostrar_erro(
+                "A porta precisa estar entre 1 e 65535."
+            )
+
+            self.txtPorta.setFocus()
+
+            return
+
+        if not banco:
+
+            self.mostrar_erro(
+                "Informe o nome do banco."
+            )
+
+            self.txtBanco.setFocus()
+
+            return
+
+        if not usuario:
+
+            self.mostrar_erro(
+                "Informe o usuário do PostgreSQL."
+            )
+
+            self.txtUsuario.setFocus()
+
+            return
+
+        if not senha:
+
+            self.mostrar_erro(
+                "Informe a senha do PostgreSQL."
+            )
+
+            self.txtSenhaBanco.setFocus()
+
+            return
+
+        # ====================================================
+        # BLOQUEIA BOTÃO
+        # ====================================================
+
+        self.btConectar.setEnabled(
+            False
+        )
+
+        self.btConectar.setText(
+            "Testando conexão..."
+        )
+
+        self.lblStatus.setText(
+            "Conectando ao PostgreSQL..."
+        )
+
+        self.lblStatus.setStyleSheet(
+            """
+            QLabel {
+                color: #0b3d91;
+                font-weight: bold;
+                padding: 8px;
+            }
+            """
+        )
+
+        QApplication.processEvents()
+
+        conexao = None
+
+        try:
+
+            # =================================================
+            # CONEXÃO REAL COM POSTGRESQL
+            # =================================================
+
+            conexao = psycopg2.connect(
+                host=host,
+                port=porta_numero,
+                dbname=banco,
+                user=usuario,
+                password=senha,
+                connect_timeout=5
+            )
+
+            # =================================================
+            # TESTA A CONEXÃO
+            # =================================================
+
+            cursor = conexao.cursor()
+
+            cursor.execute(
+                "SELECT 1"
+            )
+
+            resultado = cursor.fetchone()
+
+            cursor.close()
+
+            if resultado != (1,):
+
+                raise Exception(
+                    "O PostgreSQL não retornou uma resposta válida."
+                )
+
+            # =================================================
+            # CONEXÃO OK
+            # =================================================
+
+            self.conexao = conexao
+
+            self.salvar_configuracao_banco()
+
+            self.lblStatus.setText(
+                "Conexão realizada com sucesso."
+            )
+
+            self.lblStatus.setStyleSheet(
+                """
+                QLabel {
+                    color: #008000;
+                    font-weight: bold;
+                    padding: 8px;
+                }
+                """
+            )
+
+            QApplication.processEvents()
+
+            # =================================================
+            # ABRE A JANELA PRINCIPAL
+            # =================================================
+
+            self.janela_principal = Janela(
+                conexao=self.conexao
+            )
+
+            self.janela_principal.show()
+
+            # -------------------------------------------------
+            # IMPORTANTE:
+            # Não fecha a conexão aqui.
+            # A janela principal passa a ser responsável por ela.
+            # -------------------------------------------------
+
+            self.close()
+
+        except Exception as erro:
+
+            # =================================================
+            # SE DER ERRO, NÃO AVANÇA
+            # =================================================
+
+            if conexao is not None:
+
+                try:
+                    conexao.close()
+                except Exception:
+                    pass
+
+            self.conexao = None
+
+            self.btConectar.setEnabled(
+                True
+            )
+
+            self.btConectar.setText(
+                "Testar conexão e entrar"
+            )
+
+            self.mostrar_erro(
+                self.traduzir_erro_postgres(
+                    erro
+                )
+            )
+
+            self.txtSenhaBanco.setFocus()
+
+    # ========================================================
+    # ERRO
+    # ========================================================
+
+    def mostrar_erro(self, mensagem):
+
+        self.lblStatus.setText(
+            mensagem
+        )
+
+        self.lblStatus.setStyleSheet(
+            """
+            QLabel {
+                color: #c00000;
+                font-weight: bold;
+                padding: 8px;
+            }
+            """
+        )
+
+    # ========================================================
+    # TRADUZIR ERROS COMUNS
+    # ========================================================
+
+    def traduzir_erro_postgres(
+        self,
+        erro
+    ):
+
+        texto = str(
+            erro
+        ).strip()
+
+        texto_lower = texto.lower()
+
+        if (
+            "password authentication failed"
+            in texto_lower
+        ):
+
+            return (
+                "Senha do PostgreSQL incorreta.\n\n"
+                "Confira o usuário e a senha."
+            )
+
+        if (
+            "could not connect to server"
+            in texto_lower
+        ):
+
+            return (
+                "Não foi possível conectar ao PostgreSQL.\n\n"
+                "Confira o IP/Host e a porta.\n\n"
+                f"Detalhes: {texto}"
+            )
+
+        if (
+            "connection refused"
+            in texto_lower
+        ):
+
+            return (
+                "A conexão foi recusada pelo PostgreSQL.\n\n"
+                "Confira se o servidor PostgreSQL está "
+                "ligado e se a porta está correta.\n\n"
+                f"Detalhes: {texto}"
+            )
+
+        if (
+            "timeout"
+            in texto_lower
+        ):
+
+            return (
+                "Tempo limite da conexão excedido.\n\n"
+                "Confira o IP, porta e se o servidor está acessível.\n\n"
+                f"Detalhes: {texto}"
+            )
+
+        if (
+            "does not exist"
+            in texto_lower
+            and "database" in texto_lower
+        ):
+
+            return (
+                "O banco de dados informado não existe.\n\n"
+                f"Detalhes: {texto}"
+            )
+
+        if (
+            "role"
+            in texto_lower
+            and "does not exist"
+            in texto_lower
+        ):
+
+            return (
+                "O usuário informado não existe no PostgreSQL.\n\n"
+                f"Detalhes: {texto}"
+            )
+
+        return (
+            "Não foi possível conectar ao PostgreSQL.\n\n"
+            f"Detalhes:\n{texto}"
+        )
+
+# ============================================================
+# TELA DE SENHA
+# ============================================================
+
+class TelaSenha(QWidget):
+
+    def __init__(self):
+        super().__init__()
+
+        self.tela_banco = None
+
+        self.setWindowTitle("Acesso ao Sistema")
+        self.setFixedSize(420, 220)
+
+        layout = QVBoxLayout(self)
+
+        titulo = QLabel("Digite a senha para continuar")
+        titulo.setAlignment(Qt.AlignCenter)
+
+        titulo.setStyleSheet("""
+            QLabel {
+                font-size: 18px;
+                font-weight: bold;
+                color: #222222;
+                padding: 10px;
+            }
+        """)
+
+        layout.addWidget(titulo)
+
+        self.txtSenha = CampoAnimado()
+
+        self.txtSenha.setPlaceholderText("Senha")
+        self.txtSenha.setEchoMode(QLineEdit.Password)
+
+        layout.addWidget(self.txtSenha)
+
+        self.lblErro = QLabel("")
+        self.lblErro.setAlignment(Qt.AlignCenter)
+
+        self.lblErro.setStyleSheet("""
+            QLabel {
+                color: #c00000;
+                font-weight: bold;
+            }
+        """)
+
+        layout.addWidget(self.lblErro)
+
+        self.btEntrar = BotaoAnimado("Continuar")
+
+        self.btEntrar.clicked.connect(
+            self.validar_senha
+        )
+
+        layout.addWidget(self.btEntrar)
+
+        self.txtSenha.returnPressed.connect(
+            self.validar_senha
+        )
+
+    def validar_senha(self):
+
+        senha = self.txtSenha.text()
+
+        # ====================================================
+        # ALTERE AQUI PARA A SENHA DO SEU PROGRAMA
+        # ====================================================
+
+        SENHA_PROGRAMA = "1234"
+
+        if senha != SENHA_PROGRAMA:
+
+            self.lblErro.setText(
+                "Senha incorreta."
+            )
+
+            self.txtSenha.clear()
+            self.txtSenha.setFocus()
+
+            return
+
+        # ====================================================
+        # SENHA CORRETA
+        # ====================================================
+        # NÃO ABRE A JANELA PRINCIPAL.
+        #
+        # Primeiro abre a tela do PostgreSQL.
+        # ====================================================
+
+        self.lblErro.setText("")
+
+        self.btEntrar.setEnabled(False)
+
+        self.tela_banco = TelaBancoDados()
+
+        self.tela_banco.show()
+
+        self.close()
+
+
+# ============================================================
+# TELA DE CONFIGURAÇÃO / CONEXÃO POSTGRESQL
+# ============================================================
+
+class TelaBancoDados(QWidget):
+
+    def __init__(self):
+        super().__init__()
+
+        self.janela_principal = None
+        self.conexao = None
+
+        self.setWindowTitle(
+            "Conexão com Banco de Dados PostgreSQL"
+        )
+
+        self.setFixedSize(
+            520,
+            430
+        )
+
+        layout = QVBoxLayout(self)
+
+        # ====================================================
+        # TITULO
+        # ====================================================
+
+        titulo = QLabel(
+            "Configuração do Banco de Dados"
+        )
+
+        titulo.setAlignment(
+            Qt.AlignCenter
+        )
+
+        titulo.setStyleSheet("""
+            QLabel {
+                font-size: 19px;
+                font-weight: bold;
+                color: #222222;
+                padding: 10px;
+            }
+        """)
+
+        layout.addWidget(titulo)
+
+        # ====================================================
+        # BANCO
+        # ====================================================
+
+        lblBanco = QLabel(
+            "Banco de dados:"
+        )
+
+        layout.addWidget(
+            lblBanco
+        )
+
+        self.txtBanco = CampoAnimado()
+
+        self.txtBanco.setText(
+            "postgres"
+        )
+
+        self.txtBanco.setReadOnly(
+            True
+        )
+
+        layout.addWidget(
+            self.txtBanco
+        )
+
+        # ====================================================
+        # IP / HOST
+        # ====================================================
+
+        lblHost = QLabel(
+            "IP / Host:"
+        )
+
+        layout.addWidget(
+            lblHost
+        )
+
+        self.txtHost = CampoAnimado()
+
+        self.txtHost.setPlaceholderText(
+            "Ex.: 192.168.0.100"
+        )
+
+        layout.addWidget(
+            self.txtHost
+        )
+
+        # ====================================================
+        # PORTA
+        # ====================================================
+
+        lblPorta = QLabel(
+            "Porta:"
+        )
+
+        layout.addWidget(
+            lblPorta
+        )
+
+        self.txtPorta = CampoAnimado()
+
+        self.txtPorta.setText(
+            "5432"
+        )
+
+        layout.addWidget(
+            self.txtPorta
+        )
+
+        # ====================================================
+        # USUARIO
+        # ====================================================
+
+        lblUsuario = QLabel(
+            "Usuário:"
+        )
+
+        layout.addWidget(
+            lblUsuario
+        )
+
+        self.txtUsuario = CampoAnimado()
+
+        self.txtUsuario.setPlaceholderText(
+            "Usuário do PostgreSQL"
+        )
+
+        layout.addWidget(
+            self.txtUsuario
+        )
+
+        # ====================================================
+        # SENHA DO POSTGRES
+        # ====================================================
+
+        lblSenha = QLabel(
+            "Senha do PostgreSQL:"
+        )
+
+        layout.addWidget(
+            lblSenha
+        )
+
+        self.txtSenhaBanco = CampoAnimado()
+
+        self.txtSenhaBanco.setEchoMode(
+            QLineEdit.Password
+        )
+
+        layout.addWidget(
+            self.txtSenhaBanco
+        )
+
+        # ====================================================
+        # STATUS
+        # ====================================================
+
+        self.lblStatus = QLabel(
+            ""
+        )
+
+        self.lblStatus.setWordWrap(
+            True
+        )
+
+        self.lblStatus.setAlignment(
+            Qt.AlignCenter
+        )
+
+        layout.addWidget(
+            self.lblStatus
+        )
+
+        # ====================================================
+        # BOTÃO TESTAR
+        # ====================================================
+
+        self.btTestar = BotaoAnimado(
+            "Testar Conexão"
+        )
+
+        self.btTestar.clicked.connect(
+            self.testar_conexao
+        )
+
+        layout.addWidget(
+            self.btTestar
+        )
+
+        # ====================================================
+        # BOTÃO ENTRAR
+        # ====================================================
+
+        self.btEntrar = BotaoAnimado(
+            "Conectar e Abrir Sistema"
+        )
+
+        self.btEntrar.setEnabled(
+            False
+        )
+
+        self.btEntrar.clicked.connect(
+            self.conectar_e_abrir
+        )
+
+        layout.addWidget(
+            self.btEntrar
+        )
+
+    # ========================================================
+    # PEGAR DADOS
+    # ========================================================
+
+    def obter_dados(self):
+
+        host = self.txtHost.text().strip()
+
+        porta = self.txtPorta.text().strip()
+
+        usuario = self.txtUsuario.text().strip()
+
+        senha = self.txtSenhaBanco.text()
+
+        banco = "postgres"
+
+        return {
+            "host": host,
+            "port": porta,
+            "user": usuario,
+            "password": senha,
+            "dbname": banco,
+        }
+
+    # ========================================================
+    # TESTAR CONEXÃO
+    # ========================================================
+
+    def testar_conexao(self):
+
+        if psycopg2 is None:
+
+            self.lblStatus.setStyleSheet("""
+                QLabel {
+                    color: #c00000;
+                    font-weight: bold;
+                }
+            """)
+
+            self.lblStatus.setText(
+                "O módulo psycopg2 não está instalado.\n"
+                "Instale com:\n"
+                "pip install psycopg2-binary"
+            )
+
+            return
+
+        dados = self.obter_dados()
+
+        if not dados["host"]:
+
+            self.lblStatus.setStyleSheet("""
+                QLabel {
+                    color: #c00000;
+                    font-weight: bold;
+                }
+            """)
+
+            self.lblStatus.setText(
+                "Informe o IP / Host do PostgreSQL."
+            )
+
+            self.txtHost.setFocus()
+
+            return
+
+        if not dados["porta"]:
+
+            self.lblStatus.setStyleSheet("""
+                QLabel {
+                    color: #c00000;
+                    font-weight: bold;
+                }
+            """)
+
+            self.lblStatus.setText(
+                "Informe a porta do PostgreSQL."
+            )
+
+            self.txtPorta.setFocus()
+
+            return
+
+        if not dados["user"]:
+
+            self.lblStatus.setStyleSheet("""
+                QLabel {
+                    color: #c00000;
+                    font-weight: bold;
+                }
+            """)
+
+            self.lblStatus.setText(
+                "Informe o usuário do PostgreSQL."
+            )
+
+            self.txtUsuario.setFocus()
+
+            return
+
+        if not dados["password"]:
+
+            self.lblStatus.setStyleSheet("""
+                QLabel {
+                    color: #c00000;
+                    font-weight: bold;
+                }
+            """)
+
+            self.lblStatus.setText(
+                "Informe a senha do PostgreSQL."
+            )
+
+            self.txtSenhaBanco.setFocus()
+
+            return
+
+        try:
+
+            porta = int(
+                dados["port"]
+            )
+
+        except ValueError:
+
+            self.lblStatus.setStyleSheet("""
+                QLabel {
+                    color: #c00000;
+                    font-weight: bold;
+                }
+            """)
+
+            self.lblStatus.setText(
+                "A porta precisa ser numérica."
+            )
+
+            self.txtPorta.setFocus()
+
+            return
+
+        self.btTestar.setEnabled(
+            False
+        )
+
+        self.btEntrar.setEnabled(
+            False
+        )
+
+        self.lblStatus.setStyleSheet("""
+            QLabel {
+                color: #174ea6;
+                font-weight: bold;
+            }
+        """)
+
+        self.lblStatus.setText(
+            "Testando conexão com PostgreSQL..."
+        )
+
+        QApplication.processEvents()
+
+        conexao_teste = None
+
+        try:
+
+            conexao_teste = psycopg2.connect(
+                host=dados["host"],
+                port=porta,
+                user=dados["user"],
+                password=dados["password"],
+                dbname=dados["dbname"],
+                connect_timeout=5
+            )
+
+            cursor = conexao_teste.cursor()
+
+            cursor.execute(
+                "SELECT version();"
+            )
+
+            resultado = cursor.fetchone()
+
+            cursor.close()
+
+            conexao_teste.close()
+
+            conexao_teste = None
+
+            self.lblStatus.setStyleSheet("""
+                QLabel {
+                    color: #008000;
+                    font-weight: bold;
+                }
+            """)
+
+            self.lblStatus.setText(
+                "CONEXÃO OK!\n"
+                "PostgreSQL respondeu corretamente."
+            )
+
+            self.btEntrar.setEnabled(
+                True
+            )
+
+        except Exception as erro:
+
+            if conexao_teste is not None:
+
+                try:
+                    conexao_teste.close()
+                except Exception:
+                    pass
+
+            self.lblStatus.setStyleSheet("""
+                QLabel {
+                    color: #c00000;
+                    font-weight: bold;
+                }
+            """)
+
+            self.lblStatus.setText(
+                "FALHA NA CONEXÃO.\n\n"
+                + str(erro)
+            )
+
+            self.btEntrar.setEnabled(
+                False
+            )
+
+        finally:
+
+            self.btTestar.setEnabled(
+                True
+            )
+
+    # ========================================================
+    # CONECTAR E ABRIR SISTEMA
+    # ========================================================
+
+    def conectar_e_abrir(self):
+
+        if psycopg2 is None:
+
+            QMessageBox.critical(
+                self,
+                "Erro",
+                "O módulo psycopg2 não está instalado.\n\n"
+                "Execute:\n"
+                "pip install psycopg2-binary"
+            )
+
+            return
+
+        dados = self.obter_dados()
+
+        try:
+
+            porta = int(
+                dados["port"]
+            )
+
+        except ValueError:
+
+            QMessageBox.critical(
+                self,
+                "Erro",
+                "A porta do PostgreSQL é inválida."
+            )
+
+            return
+
+        self.btEntrar.setEnabled(
+            False
+        )
+
+        self.btTestar.setEnabled(
+            False
+        )
+
+        self.lblStatus.setStyleSheet("""
+            QLabel {
+                color: #174ea6;
+                font-weight: bold;
+            }
+        """)
+
+        self.lblStatus.setText(
+            "Estabelecendo conexão..."
+        )
+
+        QApplication.processEvents()
+
+        try:
+
+            self.conexao = psycopg2.connect(
+                host=dados["host"],
+                port=porta,
+                user=dados["user"],
+                password=dados["password"],
+                dbname="postgres",
+                connect_timeout=5
+            )
+
+            # =================================================
+            # TESTE REAL
+            # =================================================
+
+            cursor = self.conexao.cursor()
+
+            cursor.execute(
+                "SELECT 1;"
+            )
+
+            resultado = cursor.fetchone()
+
+            cursor.close()
+
+            if resultado is None:
+
+                raise Exception(
+                    "O PostgreSQL não retornou uma resposta válida."
+                )
+
+            # =================================================
+            # SOMENTE AQUI A TELA PRINCIPAL É CRIADA
+            # =================================================
+
+            self.janela_principal = Janela()
+
+            # Guarda a conexão na janela principal
+            self.janela_principal.conexao_banco = (
+                self.conexao
+            )
+
+            self.janela_principal.config_banco = {
+                "host": dados["host"],
+                "port": porta,
+                "user": dados["user"],
+                "dbname": "postgres",
+            }
+
+            self.janela_principal.show()
+
+            self.close()
+
+        except Exception as erro:
+
+            if self.conexao is not None:
+
+                try:
+                    self.conexao.close()
+                except Exception:
+                    pass
+
+                self.conexao = None
+
+            self.btEntrar.setEnabled(
+                False
+            )
+
+            self.btTestar.setEnabled(
+                True
+            )
+
+            self.lblStatus.setStyleSheet("""
+                QLabel {
+                    color: #c00000;
+                    font-weight: bold;
+                }
+            """)
+
+            self.lblStatus.setText(
+                "NÃO FOI POSSÍVEL CONECTAR.\n\n"
+                + str(erro)
+            )
+
+            QMessageBox.critical(
+                self,
+                "Falha na conexão",
+                "A conexão com o PostgreSQL falhou.\n\n"
+                "Verifique:\n"
+                "• IP / Host\n"
+                "• Porta\n"
+                "• Usuário\n"
+                "• Senha\n"
+                "• Servidor PostgreSQL\n"
+                "• Rede\n\n"
+                f"Erro:\n{erro}"
+            )
+
+# ============================================================
+# BASE LOCAL DE QUANTIDADE POR EMBALAGEM
+# ============================================================
+
+BASE_EMBALAGENS_PADRAO = {
+    # EAN da unidade -> quantidade por caixa/master.
+    # O primeiro registro foi confirmado no catálogo Ypê e em distribuidores.
+    "7896098902400": {
+        "quantidade": 6,
+        "fonte": "Catálogo Ypê / Multicanal Atacado",
+        "ean_master": "27896098902404"
+    },
+    # Outros registros do mesmo catálogo/listagem, para a base já começar útil.
+    "7896098900406": {"quantidade": 24, "fonte": "Multicanal Atacado", "ean_master": ""},
+    "7896098902394": {"quantidade": 6, "fonte": "Multicanal Atacado", "ean_master": ""},
+    "7896098902424": {"quantidade": 6, "fonte": "Multicanal Atacado", "ean_master": ""},
+    "7896098903032": {"quantidade": 6, "fonte": "Multicanal Atacado", "ean_master": ""},
+    "7896098902417": {"quantidade": 6, "fonte": "Multicanal Atacado", "ean_master": ""},
+    "7896098903674": {"quantidade": 6, "fonte": "Multicanal Atacado", "ean_master": ""},
+    "7896098903605": {"quantidade": 12, "fonte": "Multicanal Atacado", "ean_master": ""},
+    "7896098903506": {"quantidade": 4, "fonte": "Multicanal Atacado", "ean_master": ""},
 }
 
-// ============================================================
-// API
-// ============================================================
 
-class KickoffApiException implements Exception {
-  final int statusCode;
-  final String message;
-  KickoffApiException(this.statusCode, this.message);
-
-  bool get isRateLimited => statusCode == 429;
-
-  @override
-  String toString() => 'KickoffAPI $statusCode: $message';
-}
-
-class KickoffApiService {
-  static const String baseUrl = 'https://api.kickoffapi.com/api/v2';
-
-  String get apiKey => dotenv.env['KICKOFF_API_KEY'] ?? '';
-
-  Future<dynamic> _get(String path, [Map<String, String>? params]) async {
-    if (apiKey.isEmpty || apiKey == 'SUA_CHAVE_AQUI') {
-      throw Exception('Chave do KickoffAPI não encontrada no .env.');
-    }
-
-    final uri = Uri.parse('$baseUrl$path').replace(queryParameters: params);
-    final response = await http.get(
-      uri,
-      headers: {
-        'x-api-key': apiKey,
-        'Accept': 'application/json',
-      },
-    );
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw KickoffApiException(
-        response.statusCode,
-        response.body,
-      );
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is Map<String, dynamic> && decoded['data'] != null) {
-      return decoded['data'];
-    }
-    if (decoded is Map<String, dynamic> && decoded['response'] != null) {
-      return decoded['response'];
-    }
-    return decoded;
-  }
-
-  Future<List<dynamic>> getLivescores() async {
-    final result = await _get('/fixtures', {'live': 'all'});
-    return result is List ? result : [];
-  }
-
-  Future<List<dynamic>> getMatchesForDate(DateTime date) async {
-    final result = await _get('/fixtures', {'date': _dateOnly(date)});
-    return result is List ? result : [];
-  }
-
-  Future<dynamic> getFixtureDetails(String id) async {
-    final fixture = await _get('/fixtures/$id');
-    if (fixture is Map) {
-      final map = Map<String, dynamic>.from(fixture);
-      try {
-        final events = await _get('/fixtures/$id/events');
-        if (events is List) map['events'] = events;
-      } catch (_) {}
-      try {
-        final lineups = await _get('/fixtures/$id/lineups');
-        if (lineups is List) map['lineups'] = lineups;
-      } catch (_) {}
-      try {
-        final stats = await _get('/fixtures/$id/statistics');
-        if (stats is List) map['statistics'] = stats;
-      } catch (_) {}
-      return map;
-    }
-    return fixture;
-  }
-
-  Future<List<dynamic>> getHeadToHead(String team1, String team2) async {
-    final result = await _get('/headtohead', {
-      'team1': team1,
-      'team2': team2,
-    });
-    return result is List ? result : [];
-  }
-
-  Future<List<dynamic>> _readListCache(String key) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(key);
-      if (raw == null || raw.isEmpty) return [];
-      final decoded = jsonDecode(raw);
-      return decoded is List ? decoded : [];
-    } catch (_) {
-      return [];
-    }
-  }
-
-  Future<void> _writeListCache(String key, List<dynamic> value) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(key, jsonEncode(value));
-    } catch (_) {}
-  }
-
-  String _leagueCacheKey(String kind, String leagueId, int? season) =>
-      'infofut_${kind}_${leagueId}_${season ?? 0}';
-
-  Future<List<dynamic>> getLeagueFixtures(String leagueId, {int? season}) async {
-    if (leagueId.trim().isEmpty) return [];
-    final key = _leagueCacheKey('fixtures', leagueId, season);
-    final params = <String, String>{'league': leagueId};
-    if (season != null) params['season'] = '$season';
-    try {
-      final result = await _get('/fixtures', params);
-      final list = result is List ? result : <dynamic>[];
-      if (list.isNotEmpty) await _writeListCache(key, list);
-      return list;
-    } catch (e) {
-      final cached = await _readListCache(key);
-      if (cached.isNotEmpty) return cached;
-      rethrow;
-    }
-  }
-
-  Future<List<dynamic>> getTeamFixtures(String teamId, {int? season}) async {
-    if (teamId.trim().isEmpty) return [];
-    final params = <String, String>{'team': teamId};
-    if (season != null) params['season'] = '$season';
-    try {
-      final result = await _get('/fixtures', params);
-      return result is List ? result : [];
-    } catch (_) {
-      return [];
-    }
-  }
-
-  Future<List<dynamic>> getLeagueStandings(String leagueId, {int? season}) async {
-    if (leagueId.trim().isEmpty) return [];
-    final key = _leagueCacheKey('standings', leagueId, season);
-    final params = <String, String>{'league': leagueId};
-    if (season != null) params['season'] = '$season';
-    try {
-      final result = await _get('/standings', params);
-      final list = result is List ? result : <dynamic>[];
-      if (list.isNotEmpty) await _writeListCache(key, list);
-      return list;
-    } catch (e) {
-      final cached = await _readListCache(key);
-      if (cached.isNotEmpty) return cached;
-      rethrow;
-    }
-  }
-
-  Future<List<dynamic>> getLeagueOdds(String leagueId, {int? season}) async {
-    if (leagueId.trim().isEmpty) return [];
-    final key = _leagueCacheKey('odds', leagueId, season);
-    final params = <String, String>{'league': leagueId};
-    if (season != null) params['season'] = '$season';
-    try {
-      final result = await _get('/odds', params);
-      final list = result is List ? result : <dynamic>[];
-      if (list.isNotEmpty) await _writeListCache(key, list);
-      return list;
-    } catch (e) {
-      final cached = await _readListCache(key);
-      if (cached.isNotEmpty) return cached;
-      rethrow;
-    }
-  }
-
-  Future<List<dynamic>> getLeagueTopScorers(String leagueId, {int? season}) async {
-    if (leagueId.trim().isEmpty) return [];
-    final key = _leagueCacheKey('scorers', leagueId, season);
-    final params = <String, String>{'league': leagueId};
-    if (season != null) params['season'] = '$season';
-    try {
-      final result = await _get('/topscorers', params);
-      final list = result is List ? result : <dynamic>[];
-      if (list.isNotEmpty) await _writeListCache(key, list);
-      return list;
-    } catch (e) {
-      final cached = await _readListCache(key);
-      if (cached.isNotEmpty) return cached;
-      rethrow;
-    }
-  }
-
-  String _dateOnly(DateTime date) {
-    final y = date.year.toString().padLeft(4, '0');
-    final m = date.month.toString().padLeft(2, '0');
-    final d = date.day.toString().padLeft(2, '0');
-    return '$y-$m-$d';
-  }
-}
+def _normalizar_ean(ean):
+    return re.sub(r"\D", "", str(ean or ""))
 
 
+def _caminho_base_embalagens():
+    pasta = os.path.join(
+        os.environ.get("APPDATA", os.path.expanduser("~")),
+        "XML"
+    )
+    os.makedirs(pasta, exist_ok=True)
+    return os.path.join(pasta, "embalagens.json")
 
-// ============================================================
-// FONTE ALTERNATIVA (ESPN – sem chave)
-// ============================================================
-// Usada apenas quando a KickoffAPI falha ou retorna 429. Os dados são
-// normalizados para o mesmo formato esperado pelos parsers do InfoFut.
-class EspnFallbackService {
-  static const String baseUrl =
-      'https://site.api.espn.com/apis/site/v2/sports/soccer';
 
-  // O endpoint "all" da ESPN pode não entregar todas as partidas.
-  // Por isso o fallback consulta também as principais ligas diretamente.
-  static const List<String> leagueCodes = [
-    'eng.1', 'eng.2', 'eng.3', 'eng.4',
-    'esp.1', 'esp.2',
-    'ita.1', 'ita.2',
-    'ger.1', 'ger.2',
-    'fra.1', 'fra.2',
-    'bra.1', 'bra.2',
-    'mex.1', 'ned.1', 'sco.1', 'usa.1', 'usa.nwsl',
-    'por.1', 'bel.1', 'tur.1', 'arg.1',
-    'col.1', 'chl.1', 'uru.1', 'ecu.1', 'par.1', 'per.1',
-    'uefa.champions', 'uefa.europa',
-  ];
+def carregar_base_embalagens():
+    caminho = _caminho_base_embalagens()
+    base = {}
 
-  Future<List<dynamic>> getMatchesForDate(DateTime date) async {
-    final ymd = _ymd(date);
-    final all = <dynamic>[];
+    if os.path.exists(caminho):
+        try:
+            with open(caminho, "r", encoding="utf-8") as arquivo:
+                dados = json.load(arquivo)
+            if isinstance(dados, dict):
+                base.update(dados)
+        except Exception:
+            pass
 
-    // Não usamos o scoreboard genérico "all": ele perde o código da competição
-    // e pode fazer Brasileirão/Serie A serem confundidos. Cada evento vem
-    // identificado pela liga que originou a consulta.
-    final leagueResults = await Future.wait(
-      leagueCodes.map(
-        (league) => _scoreboard(league, {'dates': ymd, 'limit': '500'}),
-      ),
-    );
-    for (final result in leagueResults) {
-      all.addAll(result);
-    }
+    # Garante que o exemplo já confirmado esteja disponível.
+    alterou = False
+    for ean, dados in BASE_EMBALAGENS_PADRAO.items():
+        if ean not in base:
+            base[ean] = dados
+            alterou = True
 
-    return _dedupe(all);
-  }
+    if alterou or not os.path.exists(caminho):
+        salvar_base_embalagens(base)
 
-  Future<List<dynamic>> getLivescores() async {
-    final today = DateTime.now();
-    final items = await getMatchesForDate(today);
-    return items.where(_isLiveRaw).toList();
-  }
+    return base
 
-  String _ymd(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}'
-      '${date.month.toString().padLeft(2, '0')}'
-      '${date.day.toString().padLeft(2, '0')}';
 
-  bool _isLiveRaw(dynamic value) {
-    final status = _asMap(_asMap(value)?['status']);
-    final type = _asMap(status?['type']);
-    final short = _safeString(
-      status?['short'] ??
-          status?['state'] ??
-          type?['state'],
-    ).toLowerCase();
-    return short == 'live' ||
-        short == 'in' ||
-        short == 'inplay' ||
-        short == 'in_play' ||
-        short.contains('live');
-  }
+def salvar_base_embalagens(base):
+    caminho = _caminho_base_embalagens()
+    tmp = caminho + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as arquivo:
+            json.dump(base, arquivo, ensure_ascii=False, indent=4)
+        os.replace(tmp, caminho)
+        return True
+    except Exception:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except Exception:
+            pass
+        return False
 
-  List<dynamic> _dedupe(List<dynamic> items) {
-    final seen = <String>{};
-    final result = <dynamic>[];
-    for (final item in items) {
-      final id = _safeString(_asMap(item)?['id']);
-      if (id.isEmpty || seen.add(id)) result.add(item);
-    }
-    return result;
-  }
 
-  Future<List<dynamic>> _scoreboard(
-    String league,
-    Map<String, String> params,
-  ) async {
-    try {
-      final uri = Uri.parse('$baseUrl/$league/scoreboard').replace(queryParameters: params);
-      final response = await http.get(uri, headers: const {'Accept': 'application/json'}).timeout(const Duration(seconds: 12));
-      if (response.statusCode < 200 || response.statusCode >= 300) return [];
-      final decoded = jsonDecode(response.body);
-      final root = _asMap(decoded);
-      final events = _asList(root?['events']);
-      return events.map((event) => _normalizeEvent(event, league)).whereType<Map<String, dynamic>>().toList();
-    } catch (_) {
-      return [];
-    }
-  }
+def obter_embalagem_local(base, ean):
+    ean = _normalizar_ean(ean)
+    if not ean:
+        return None
 
-  String _espnLeagueName(String code) {
-    const names = <String, String>{
-      'eng.1': 'Premier League',
-      'eng.2': 'Championship',
-      'eng.3': 'League One',
-      'eng.4': 'League Two',
-      'esp.1': 'LaLiga',
-      'esp.2': 'LaLiga 2',
-      'ita.1': 'Serie A',
-      'ita.2': 'Serie B',
-      'ger.1': 'Bundesliga',
-      'ger.2': '2. Bundesliga',
-      'fra.1': 'Ligue 1',
-      'fra.2': 'Ligue 2',
-      'bra.1': 'Brasileirão',
-      'bra.2': 'Brasileirão Série B',
-      'mex.1': 'Liga MX',
-      'ned.1': 'Eredivisie',
-      'sco.1': 'Scottish Premiership',
-      'usa.1': 'MLS',
-      'usa.nwsl': 'NWSL',
-      'por.1': 'Primeira Liga',
-      'bel.1': 'Pro League',
-      'tur.1': 'Super Lig',
-      'arg.1': 'Liga Profesional',
-      'col.1': 'Liga BetPlay',
-      'chl.1': 'Primera División Chile',
-      'uru.1': 'Primera División Uruguay',
-      'ecu.1': 'LigaPro Ecuador',
-      'par.1': 'Copa de Primera',
-      'per.1': 'Liga 1',
-      'uefa.champions': 'Champions League',
-      'uefa.europa': 'Europa League',
-    };
-    return names[code] ?? 'Futebol';
-  }
+    dados = base.get(ean)
+    if not isinstance(dados, dict):
+        return None
 
-  String _espnCountry(String code) {
-    if (code.startsWith('ita.')) return 'Itália';
-    if (code.startsWith('bra.')) return 'Brasil';
-    if (code.startsWith('eng.')) return 'Inglaterra';
-    if (code.startsWith('esp.')) return 'Espanha';
-    if (code.startsWith('ger.')) return 'Alemanha';
-    if (code.startsWith('fra.')) return 'França';
-    if (code.startsWith('por.')) return 'Portugal';
-    if (code.startsWith('ned.')) return 'Holanda';
-    if (code.startsWith('bel.')) return 'Bélgica';
-    if (code.startsWith('tur.')) return 'Turquia';
-    if (code.startsWith('arg.')) return 'Argentina';
-    if (code.startsWith('col.')) return 'Colômbia';
-    if (code.startsWith('chl.')) return 'Chile';
-    if (code.startsWith('uru.')) return 'Uruguai';
-    if (code.startsWith('ecu.')) return 'Equador';
-    if (code.startsWith('par.')) return 'Paraguai';
-    if (code.startsWith('per.')) return 'Peru';
-    if (code.startsWith('mex.')) return 'México';
-    if (code.startsWith('sco.')) return 'Escócia';
-    if (code.startsWith('usa.')) return 'Estados Unidos';
-    return 'Internacional';
-  }
+    try:
+        quantidade = int(dados.get("quantidade", 0))
+    except Exception:
+        quantidade = 0
 
-  Map<String, dynamic>? _normalizeEvent(dynamic raw, String sourceLeagueCode) {
-    final event = _asMap(raw);
-    if (event == null) return null;
-    final competitions = _asList(event['competitions']);
-    final comp = competitions.isNotEmpty ? _asMap(competitions.first) : null;
-    final competitors = _asList(comp?['competitors']);
-    Map<String, dynamic>? home;
-    Map<String, dynamic>? away;
-    for (final item in competitors) {
-      final c = _asMap(item);
-      final team = _asMap(c?['team']);
-      if (c?['homeAway']?.toString() == 'home') home = {...?team, 'score': c?['score']};
-      if (c?['homeAway']?.toString() == 'away') away = {...?team, 'score': c?['score']};
-    }
-    if (home == null || away == null) return null;
-    final statusMap = _asMap(event['status']);
-    final type = _asMap(statusMap?['type']);
-    final completed = type?['completed'] == true;
-    final state = _safeString(type?['state']).toLowerCase();
-    final normalizedStatus = completed ? 'FT' : (state == 'in' ? 'LIVE' : 'scheduled');
-    final elapsed = _toInt(statusMap?['displayClock']?.toString().split(':').first) ?? _toInt(statusMap?['period']);
-    final league = _asMap(event['season']) ?? _asMap(comp?['season']);
-
-    final normalizedEvents = <Map<String, dynamic>>[];
-    final details = _asList(comp?['details']);
-    for (final rawDetail in details) {
-      final detail = _asMap(rawDetail);
-      if (detail == null) continue;
-      final typeMap = _asMap(detail['type']);
-      final typeName = (detail['type'] ?? typeMap?['text'] ?? detail['text'] ?? '').toString().toLowerCase();
-      if (!typeName.contains('goal') && !typeName.contains('score')) continue;
-      final clock = _asMap(detail['clock']);
-      final display = (detail['clock'] is String ? detail['clock'] : clock?['displayValue'])?.toString() ?? '';
-      final minute = int.tryParse(display.split(':').first.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-      final team = _asMap(detail['team']);
-      final athletes = _asList(detail['athletes']);
-      final athlete = athletes.isNotEmpty ? _asMap(athletes.first) : null;
-      normalizedEvents.add({
-        'id': 'espn_goal_${detail['id'] ?? normalizedEvents.length}',
-        'type': 'Goal',
-        'time': {'elapsed': minute},
-        'team': {'id': _safeString(team?['id']), 'name': _safeString(team?['displayName'] ?? team?['name'])},
-        'player': {'name': _safeString(athlete?['displayName'] ?? athlete?['fullName'], 'Gol')},
-      });
-    }
+    if quantidade <= 0:
+        return None
 
     return {
-      'id': 'espn_${_safeString(event['id'])}',
-      'home': {'id': 'espn_${_safeString(home['id'])}', 'name': home['displayName'] ?? home['name'], 'logo': home['logo']},
-      'away': {'id': 'espn_${_safeString(away['id'])}', 'name': away['displayName'] ?? away['name'], 'logo': away['logo']},
-      'score': {'home': home['score'], 'away': away['score']},
-      'status': {'short': normalizedStatus, 'elapsed': elapsed},
-      'league': {
-        'id': 'espn:$sourceLeagueCode',
-        'code': sourceLeagueCode,
-        'name': _espnLeagueName(sourceLeagueCode),
-        'country': _espnCountry(sourceLeagueCode),
-      },
-      'date': event['date'],
-      'source': 'espn',
-      'events': normalizedEvents,
-    };
-  }
-}
-
-// ============================================================
-// MODELOS
-// ============================================================
-
-class TeamInfo {
-  final int id;
-  final String apiId;
-  final String name;
-  final String? logo;
-
-  const TeamInfo({
-    required this.id,
-    this.apiId = '',
-    required this.name,
-    this.logo,
-  });
-}
-
-class MatchEvent {
-  final String type;
-  final String player;
-  final String? assist;
-  final int minute;
-  final String? team;
-  final int? teamId;
-
-  const MatchEvent({
-    required this.type,
-    required this.player,
-    required this.minute,
-    this.assist,
-    this.team,
-    this.teamId,
-  });
-}
-
-class MatchStat {
-  final String label;
-  final String home;
-  final String away;
-
-  const MatchStat({
-    required this.label,
-    required this.home,
-    required this.away,
-  });
-}
-
-class MatchLineup {
-  final String player;
-  final String number;
-  final String position;
-
-  const MatchLineup({
-    required this.player,
-    required this.number,
-    required this.position,
-  });
-}
-
-class LiveMatch {
-  final int id;
-  final String apiId;
-  final TeamInfo home;
-  final TeamInfo away;
-  final int? homeScore;
-  final int? awayScore;
-  final String status;
-  final int? minute;
-  final String league;
-  final String country;
-  final String leagueApiId;
-  final String? leagueLogo;
-  final int? leagueSeason;
-  final DateTime? startTime;
-  final List<MatchEvent> events;
-  final String? round;
-
-  const LiveMatch({
-    required this.id,
-    this.apiId = '',
-    required this.home,
-    required this.away,
-    this.homeScore,
-    this.awayScore,
-    required this.status,
-    this.minute,
-    required this.league,
-    this.country = 'Internacional',
-    this.leagueApiId = '',
-    this.leagueLogo,
-    this.leagueSeason,
-    this.startTime,
-    this.events = const [],
-    this.round,
-  });
-
-  bool get isLive {
-    final value = status.toLowerCase();
-
-    return value.contains('live') ||
-        value.contains('inplay') ||
-        value.contains('in_play') ||
-        value.contains('1h') ||
-        value.contains('2h') ||
-        value.contains('halftime') ||
-        value.contains('extra') ||
-        value.contains('pen');
-  }
-
-  bool get isFinished {
-    final value = status.toLowerCase();
-
-    return value.contains('finished') ||
-        value.contains('ft') ||
-        value.contains('ended') ||
-        value.contains('complete');
-  }
-
-  bool get isScheduled {
-    return !isLive && !isFinished;
-  }
-}
-
-class MatchDetails {
-  final int id;
-  final String apiId;
-  final TeamInfo home;
-  final TeamInfo away;
-  final int? homeScore;
-  final int? awayScore;
-  final String status;
-  final String league;
-  final String venue;
-  final DateTime? startTime;
-  final List<MatchEvent> events;
-  final List<MatchStat> stats;
-  final List<MatchLineup> homeLineup;
-  final List<MatchLineup> awayLineup;
-
-  const MatchDetails({
-    required this.id,
-    this.apiId = '',
-    required this.home,
-    required this.away,
-    this.homeScore,
-    this.awayScore,
-    required this.status,
-    required this.league,
-    required this.venue,
-    this.startTime,
-    this.events = const [],
-    this.stats = const [],
-    this.homeLineup = const [],
-    this.awayLineup = const [],
-  });
-}
-
-// ============================================================
-// PARSERS
-// ============================================================
-
-int? _toInt(dynamic value) {
-  if (value == null) return null;
-  if (value is int) return value;
-  return int.tryParse(value.toString());
-}
-
-String _safeString(dynamic value, [String fallback = '']) {
-  if (value == null) return fallback;
-  return value.toString();
-}
-
-Map<String, dynamic>? _asMap(dynamic value) {
-  if (value is Map<String, dynamic>) return value;
-  if (value is Map) return Map<String, dynamic>.from(value);
-  return null;
-}
-
-List<dynamic> _asList(dynamic value) => value is List ? value : [];
-
-int _localId(String value) => value.hashCode.abs();
-
-List<dynamic> _getParticipants(dynamic fixture) {
-  final map = _asMap(fixture);
-  if (map == null) return [];
-
-  // KickoffAPI V2 usa diretamente os objetos "home" e "away".
-  final teams = _asMap(map['teams']);
-  final home = _asMap(map['home']) ?? _asMap(teams?['home']);
-  final away = _asMap(map['away']) ?? _asMap(teams?['away']);
-  if (home != null || away != null) {
-    return [
-      if (home != null) {...home, '_side': 'home'},
-      if (away != null) {...away, '_side': 'away'},
-    ];
-  }
-
-  // Compatibilidade com formatos antigos.
-  final homeTeam = _asMap(map['homeTeam']);
-  final awayTeam = _asMap(map['awayTeam']);
-  if (homeTeam != null || awayTeam != null) {
-    return [
-      if (homeTeam != null) {...homeTeam, '_side': 'home'},
-      if (awayTeam != null) {...awayTeam, '_side': 'away'},
-    ];
-  }
-
-  return _asList(map['participants']);
-}
-
-TeamInfo _parseTeam(dynamic raw, String fallbackName) {
-  final map = _asMap(raw);
-  if (map == null) return TeamInfo(id: 0, name: fallbackName);
-
-  final apiId = _safeString(map['id']);
-  final name = _safeString(
-    map['name'] ?? map['shortName'] ?? map['short_name'],
-    fallbackName,
-  );
-
-  final logo = map['logo']?.toString() ??
-      map['logoUrl']?.toString() ??
-      map['logo_url']?.toString() ??
-      map['image_path']?.toString() ??
-      map['image']?.toString();
-
-  return TeamInfo(
-    id: apiId.isEmpty ? 0 : _localId(apiId),
-    apiId: apiId,
-    name: name.isEmpty ? fallbackName : name,
-    logo: logo,
-  );
-}
-
-TeamInfo _findHomeTeam(dynamic fixture) {
-  final map = _asMap(fixture);
-
-  // KickoffAPI V2 / H2H: home: {...} ou teams: { home: {...} }
-  final teams = _asMap(map?['teams']);
-  final home = _asMap(map?['home']) ?? _asMap(teams?['home']);
-  if (home != null) return _parseTeam(home, 'Mandante');
-
-  final homeTeam = _asMap(map?['homeTeam']);
-  if (homeTeam != null) return _parseTeam(homeTeam, 'Mandante');
-
-  for (final raw in _getParticipants(fixture)) {
-    final m = _asMap(raw);
-    if (m?['_side'] == 'home') return _parseTeam(m, 'Mandante');
-
-    final meta = _asMap(m?['meta']);
-    if (meta?['location']?.toString().toLowerCase() == 'home') {
-      return _parseTeam(m, 'Mandante');
-    }
-  }
-
-  final p = _getParticipants(fixture);
-  return p.isNotEmpty
-      ? _parseTeam(p.first, 'Mandante')
-      : const TeamInfo(id: 0, name: 'Mandante');
-}
-
-TeamInfo _findAwayTeam(dynamic fixture) {
-  final map = _asMap(fixture);
-
-  // KickoffAPI V2 / H2H: away: {...} ou teams: { away: {...} }
-  final teams = _asMap(map?['teams']);
-  final away = _asMap(map?['away']) ?? _asMap(teams?['away']);
-  if (away != null) return _parseTeam(away, 'Visitante');
-
-  final awayTeam = _asMap(map?['awayTeam']);
-  if (awayTeam != null) return _parseTeam(awayTeam, 'Visitante');
-
-  for (final raw in _getParticipants(fixture)) {
-    final m = _asMap(raw);
-    if (m?['_side'] == 'away') return _parseTeam(m, 'Visitante');
-
-    final meta = _asMap(m?['meta']);
-    if (meta?['location']?.toString().toLowerCase() == 'away') {
-      return _parseTeam(m, 'Visitante');
-    }
-  }
-
-  final p = _getParticipants(fixture);
-  return p.length > 1
-      ? _parseTeam(p[1], 'Visitante')
-      : const TeamInfo(id: 0, name: 'Visitante');
-}
-
-int? _scoreValue(dynamic raw, String side) {
-  final map = _asMap(raw);
-  if (map == null) return _toInt(raw);
-  final direct = _toInt(map[side]);
-  if (direct != null) return direct;
-  for (final key in const ['fulltime', 'current', 'display', 'final', 'regular', 'total']) {
-    final nested = _asMap(map[key]);
-    final value = _toInt(nested?[side]);
-    if (value != null) return value;
-  }
-  final goals = _asMap(map['goals']);
-  final value = _toInt(goals?[side]);
-  if (value != null) return value;
-  return null;
-}
-
-int? _scoreForTeam(dynamic fixture, int teamId) {
-  final map = _asMap(fixture);
-  if (map == null) return null;
-
-  // KickoffAPI V2: score: { home: 2, away: 1, halftime: {...} }
-  final score = _asMap(map['score']) ?? _asMap(map['goals']);
-  final teams = _asMap(map['teams']);
-  final home = _asMap(map['home']) ?? _asMap(teams?['home']);
-  final away = _asMap(map['away']) ?? _asMap(teams?['away']);
-
-  final homeId = _safeString(home?['id']);
-  final awayId = _safeString(away?['id']);
-
-  if (homeId.isNotEmpty && _localId(homeId) == teamId) {
-    return _scoreValue(score, 'home') ?? _scoreValue(map['homeScore'], 'home');
-  }
-
-  if (awayId.isNotEmpty && _localId(awayId) == teamId) {
-    return _scoreValue(score, 'away') ?? _scoreValue(map['awayScore'], 'away');
-  }
-
-  // Compatibilidade com formato antigo.
-  final oldHome = _asMap(map['homeTeam']);
-  final oldAway = _asMap(map['awayTeam']);
-  final oldHomeId = _safeString(oldHome?['id']);
-  final oldAwayId = _safeString(oldAway?['id']);
-
-  if (oldHomeId.isNotEmpty && _localId(oldHomeId) == teamId) {
-    return _scoreValue(map['homeScore'], 'home') ?? _scoreValue(score, 'home');
-  }
-
-  if (oldAwayId.isNotEmpty && _localId(oldAwayId) == teamId) {
-    return _scoreValue(map['awayScore'], 'away') ?? _scoreValue(score, 'away');
-  }
-
-  for (final raw in _asList(map['scores'])) {
-    final item = _asMap(raw);
-    if (item == null) continue;
-
-    final participant = _safeString(
-      item['participant_id'] ?? item['team_id'] ?? _asMap(item['team'])?['id'],
-    );
-
-    if (participant.isNotEmpty && _localId(participant) == teamId) {
-      return _toInt(_asMap(item['score'])?['goals']) ??
-          _toInt(item['goals']);
-    }
-  }
-
-  return null;
-}
-
-String _findState(dynamic fixture) {
-  final map = _asMap(fixture);
-
-  // KickoffAPI V2 normalmente devolve status como objeto:
-  // { long: "Second Half", short: "2H", elapsed: 74 }
-  final statusMap = _asMap(map?['status']);
-  if (statusMap != null) {
-    final shortValue = _safeString(
-      statusMap['short'] ??
-          statusMap['short_name'] ??
-          statusMap['code'] ??
-          statusMap['status'],
-    );
-    if (shortValue.isNotEmpty) return shortValue;
-
-    final longValue = _safeString(
-      statusMap['long'] ??
-          statusMap['name'] ??
-          statusMap['developer_name'],
-    );
-    if (longValue.isNotEmpty) return longValue;
-  }
-
-  // Compatibilidade com respostas onde status vem como texto.
-  final statusText = map?['status'];
-  if (statusText is String && statusText.trim().isNotEmpty) {
-    return statusText.trim();
-  }
-
-  final state = _asMap(map?['state']);
-  return _safeString(
-    state?['short'] ??
-        state?['short_name'] ??
-        state?['name'] ??
-        state?['developer_name'],
-    'scheduled',
-  );
-}
-
-int? _findMinute(dynamic fixture) {
-  final map = _asMap(fixture);
-  final status = _asMap(map?['status']);
-  final direct = _toInt(map?['minute']) ?? _toInt(status?['elapsed']);
-  if (direct != null) return direct;
-  for (final raw in _asList(map?['periods']).reversed) {
-    final p = _asMap(raw);
-    final m = _toInt(p?['minutes']) ?? _toInt(p?['elapsed']);
-    if (m != null) return m;
-  }
-  return null;
-}
-
-String _findCountry(dynamic fixture) {
-  final map = _asMap(fixture);
-  final league = _asMap(map?['league']);
-  final direct = _safeString(league?['country'] ?? league?['countryName']).trim();
-  if (direct.isNotEmpty) return direct;
-
-  final name = _safeString(league?['name']).toLowerCase();
-  if (name.contains('premier league') || name.contains('championship') || name.contains('league one') || name.contains('league two')) return 'Inglaterra';
-  if (name.contains('laliga') || name.contains('la liga')) return 'Espanha';
-  if (name.contains('serie a') || name.contains('serie b')) return 'Itália';
-  if (name.contains('bundesliga')) return 'Alemanha';
-  if (name.contains('ligue 1') || name.contains('ligue 2')) return 'França';
-  if (name.contains('eredivisie') || name.contains('eerste divisie')) return 'Holanda';
-  if (name.contains('primeira liga') || name.contains('liga portugal')) return 'Portugal';
-  if (name.contains('brasileir') || name.contains('carioca') || name.contains('paulista')) return 'Brasil';
-  if (name.contains('nwsl') || name.contains('mls')) return 'Estados Unidos';
-  if (name.contains('liga de expansión') || name.contains('liga de expansion') || name.contains('liga mx')) return 'México';
-  if (name.contains('liga profesional')) return 'Argentina';
-  if (name.contains('champions') || name.contains('europa league') || name.contains('conference league')) return 'Europa';
-  return 'Internacional';
-}
-
-String _findLeague(dynamic fixture) {
-  final map = _asMap(fixture);
-  return _safeString(_asMap(map?['league'])?['name'], 'Futebol');
-}
-
-String _findLeagueApiId(dynamic fixture) {
-  final map = _asMap(fixture);
-  return _safeString(_asMap(map?['league'])?['id']);
-}
-
-String? _findLeagueLogo(dynamic fixture) {
-  final map = _asMap(fixture);
-  final league = _asMap(map?['league']);
-  final value = league?['logo'] ?? league?['image'] ?? league?['image_path'];
-  final text = value?.toString().trim() ?? '';
-  return text.isEmpty ? null : text;
-}
-
-int? _findLeagueSeason(dynamic fixture) {
-  final map = _asMap(fixture);
-  return _toInt(_asMap(map?['league'])?['season']);
-}
-
-DateTime? _findStartTime(dynamic fixture) {
-  final map = _asMap(fixture);
-  return DateTime.tryParse(_safeString(map?['date'] ?? map?['starting_at']))?.toLocal();
-}
-
-String _findVenue(dynamic fixture) {
-  final venue = _asMap(_asMap(fixture)?['venue']);
-  return _safeString(venue?['name'], 'Estádio não informado');
-}
-
-int _findEventMinute(Map<String, dynamic> event) {
-  final time = _asMap(event['time']);
-  return _toInt(event['minute']) ?? _toInt(event['time']) ?? _toInt(time?['elapsed']) ?? 0;
-}
-
-String _findPlayerName(Map<String, dynamic> event) {
-  final player = _asMap(event['player']);
-  return _safeString(player?['name'] ?? event['playerName'] ?? event['player_name'], 'Jogador');
-}
-
-String _normalizeEventType(Map<String, dynamic> event) {
-  final type = [event['type'], event['code'], event['event_type'], event['sub_type'], event['detail']]
-      .where((e) => e != null).map((e) => e.toString().toLowerCase()).join(' ');
-  if (type.contains('goal') || type.contains('scored') || type.contains('score')) return 'goal';
-  if (type.contains('yellow')) return 'yellow';
-  if (type.contains('red')) return 'red';
-  if (type.contains('substitution') || type.contains('sub')) return 'substitution';
-  return 'other';
-}
-
-List<MatchEvent> _parseEvents(dynamic fixture) {
-  final map = _asMap(fixture);
-  if (map == null) return [];
-
-  // Os provedores não usam sempre o mesmo nome para a linha do tempo.
-  // Procura também nas estruturas mais comuns para não perder os minutos dos gols.
-  final nestedFixture = _asMap(map['fixture']);
-  final rawEvents = <dynamic>[
-    ..._asList(map['events']),
-    ..._asList(map['incidents']),
-    ..._asList(map['timeline']),
-    ..._asList(map['event']),
-    ..._asList(nestedFixture?['events']),
-    ..._asList(nestedFixture?['incidents']),
-    ..._asList(nestedFixture?['timeline']),
-  ];
-
-  final result = <MatchEvent>[];
-  final seen = <String>{};
-  for (final raw in rawEvents) {
-    final event = _asMap(raw);
-    if (event == null) continue;
-    final type = _normalizeEventType(event);
-    if (type == 'other') continue;
-    final minute = _findEventMinute(event);
-    final uniqueKey = '${type}_${minute}_${_safeString(event['id'] ?? event['playerId'] ?? event['player_id'] ?? event['playerName'])}';
-    if (!seen.add(uniqueKey)) continue;
-    final teamRaw = _asMap(event['team']) ?? _asMap(event['participant']);
-    final teamIdText = _safeString(
-      event['teamId'] ??
-          event['team_id'] ??
-          event['participant_id'] ??
-          event['participantId'] ??
-          teamRaw?['id'],
-    );
-    final teamId = teamIdText.isEmpty ? null : _localId(teamIdText);
-    String? teamName = _safeString(
-      teamRaw?['name'] ?? event['teamName'] ?? event['team_name'],
-    );
-    if (teamName.isEmpty) teamName = null;
-    if (teamName == null && teamIdText.isNotEmpty) {
-      for (final rawTeam in _getParticipants(fixture)) {
-        final t = _asMap(rawTeam);
-        if (_safeString(t?['id']) == teamIdText) { teamName = t?['name']?.toString(); break; }
-      }
-    }
-    final assist = _asMap(event['assist']);
-    result.add(MatchEvent(
-      type: type,
-      player: _findPlayerName(event),
-      assist: assist?['name']?.toString() ?? event['assistName']?.toString(),
-      minute: minute,
-      team: teamName,
-      teamId: teamId,
-    ));
-  }
-  result.sort((a, b) => a.minute.compareTo(b.minute));
-  return result;
-}
-
-String? _findRound(dynamic fixture) {
-  final map = _asMap(fixture);
-  final league = _asMap(map?['league']);
-  final season = _asMap(map?['season']);
-  final round = map?['round'] ?? map?['matchday'] ?? map?['roundName'] ??
-      league?['round'] ?? league?['matchday'] ?? season?['round'];
-  if (round == null) return null;
-  final value = round.toString().trim();
-  return value.isEmpty ? null : value;
-}
-
-LiveMatch _parseLiveMatch(dynamic fixture) {
-  final map = _asMap(fixture) ?? {};
-  final home = _findHomeTeam(fixture);
-  final away = _findAwayTeam(fixture);
-  final apiId = _safeString(map['id']);
-  return LiveMatch(
-    id: apiId.isEmpty ? 0 : _localId(apiId),
-    apiId: apiId,
-    home: home,
-    away: away,
-    homeScore: _scoreForTeam(fixture, home.id),
-    awayScore: _scoreForTeam(fixture, away.id),
-    status: _findState(fixture),
-    minute: _findMinute(fixture),
-    league: _findLeague(fixture),
-    country: _findCountry(fixture),
-    leagueApiId: _findLeagueApiId(fixture),
-    leagueLogo: _findLeagueLogo(fixture),
-    leagueSeason: _findLeagueSeason(fixture),
-    startTime: _findStartTime(fixture),
-    events: _parseEvents(fixture),
-    round: _findRound(fixture),
-  );
-}
-
-MatchDetails _parseDetails(dynamic fixture) {
-  final map = _asMap(fixture) ?? {};
-  final home = _findHomeTeam(fixture);
-  final away = _findAwayTeam(fixture);
-  final apiId = _safeString(map['id']);
-  final lineups = _parseLineups(map['lineups'], home.apiId, away.apiId);
-  return MatchDetails(
-    id: apiId.isEmpty ? 0 : _localId(apiId),
-    apiId: apiId,
-    home: home,
-    away: away,
-    homeScore: _scoreForTeam(fixture, home.id),
-    awayScore: _scoreForTeam(fixture, away.id),
-    status: _findState(fixture),
-    league: _findLeague(fixture),
-    venue: _findVenue(fixture),
-    startTime: _findStartTime(fixture),
-    events: _parseEvents(fixture),
-    stats: _parseStatistics(map['statistics'], home.apiId, away.apiId),
-    homeLineup: lineups.$1,
-    awayLineup: lineups.$2,
-  );
-}
-
-List<MatchStat> _parseStatistics(dynamic raw, String homeApiId, String awayApiId) {
-  final table = <String, List<String>>{};
-  for (final itemRaw in _asList(raw)) {
-    final item = _asMap(itemRaw);
-    if (item == null) continue;
-    final team = _asMap(item['team']);
-    final teamId = _safeString(item['teamId'] ?? item['team_id'] ?? team?['id']);
-    final isHome = teamId.isNotEmpty && (teamId == homeApiId || item['home'] == true || item['side']?.toString().toLowerCase() == 'home');
-    final statsList = _asList(item['statistics']);
-    if (statsList.isNotEmpty) {
-      for (final rawStat in statsList) {
-        final stat = _asMap(rawStat);
-        if (stat == null) continue;
-        final type = _asMap(stat['type']);
-        final label = _safeString(stat['name'] ?? type?['name'] ?? stat['label'], 'Estatística');
-        final value = _safeString(stat['value'] ?? stat['displayValue'] ?? stat['data'], '-');
-        final pair = table.putIfAbsent(label, () => ['', '']);
-        if (isHome) pair[0] = value;
-        else if (teamId.isNotEmpty && teamId == awayApiId) pair[1] = value;
-      }
-      continue;
-    }
-    final label = _safeString(item['name'] ?? item['type'], 'Estatística');
-    final pair = table.putIfAbsent(label, () => ['', '']);
-    if (item['home'] != null) pair[0] = item['home'].toString();
-    if (item['away'] != null) pair[1] = item['away'].toString();
-  }
-  return table.entries.map((e) => MatchStat(label: e.key, home: e.value[0].isEmpty ? '-' : e.value[0], away: e.value[1].isEmpty ? '-' : e.value[1])).toList();
-}
-(List<MatchLineup>, List<MatchLineup>) _parseLineups(dynamic raw, String homeApiId, String awayApiId) {
-  final home = <MatchLineup>[];
-  final away = <MatchLineup>[];
-  final homeId = homeApiId.trim();
-  final awayId = awayApiId.trim();
-
-  MatchLineup addPlayer(dynamic playerRaw) {
-    final p = _asMap(playerRaw) ?? {};
-    final player = _asMap(p['player']) ?? _asMap(p['athlete']);
-    final number = p['number'] ?? p['jersey_number'] ?? p['jersey'] ?? player?['jersey'];
-    final positionMap = _asMap(p['position']);
-    return MatchLineup(
-      player: _safeString(p['playerName'] ?? p['name'] ?? player?['name'] ?? player?['displayName'], 'Jogador'),
-      number: _safeString(number, '-'),
-      position: _safeString(p['pos'] ?? positionMap?['name'] ?? positionMap?['abbreviation'] ?? p['position'], ''),
-    );
-  }
-
-  for (final itemRaw in _asList(raw)) {
-    final item = _asMap(itemRaw);
-    if (item == null) continue;
-    final team = _asMap(item['team']);
-    final teamId = _safeString(item['teamId'] ?? item['team_id'] ?? team?['id']);
-    final isHome = teamId.isNotEmpty && teamId == homeId;
-    final isAway = teamId.isNotEmpty && teamId == awayId;
-    final target = isAway ? away : (isHome ? home : (home.isEmpty ? home : away));
-
-    final starters = _asList(item['startXI']);
-    final startersAlt = _asList(item['start_xi']);
-    final substitutes = _asList(item['substitutes']);
-    final players = _asList(item['players']);
-    final source = [...starters, ...startersAlt, ...players, ...substitutes];
-    for (final p in source) {
-      final parsed = addPlayer(p);
-      if (parsed.player.trim().isNotEmpty) target.add(parsed);
-    }
-  }
-
-  // Alguns formatos retornam uma lista simples de jogadores dentro de cada lado.
-  if (home.isEmpty && away.isEmpty && _asList(raw).isNotEmpty) {
-    final items = _asList(raw);
-    for (final rawItem in items) {
-      final item = _asMap(rawItem) ?? {};
-      final team = _asMap(item['team']);
-      final teamId = _safeString(item['teamId'] ?? team?['id']);
-      final target = teamId == awayId ? away : home;
-      target.add(addPlayer(item));
-    }
-  }
-  return (home, away);
-}
-class _ProfileMenuItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
-  final bool danger;
-  const _ProfileMenuItem({required this.icon, required this.title, required this.onTap, this.danger = false});
-  @override
-  Widget build(BuildContext context) => ListTile(
-        dense: true,
-        leading: Icon(icon, color: danger ? Colors.red : null),
-        title: Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: danger ? Colors.red : null)),
-        trailing: const Icon(Icons.chevron_right, size: 18),
-        onTap: onTap,
-      );
-}
-
-class _ThemeQuickOption extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-  const _ThemeQuickOption({required this.title, required this.icon, required this.selected, required this.onTap});
-  @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: selected ? const Color(0xFF18C96E) : Theme.of(context).colorScheme.outlineVariant),
-          ),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(icon, size: 18),
-            const SizedBox(width: 6),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-          ]),
-        ),
-      );
-}
-
-// ============================================================
-// MEU PERFIL
-// ============================================================
-
-class ProfilePage extends StatefulWidget {
-  final double currentFontScale;
-  final Future<void> Function(double value) onFontScaleChanged;
-  final String currentMatchOrder;
-  final Future<void> Function(String value) onMatchOrderChanged;
-
-  const ProfilePage({
-    super.key,
-    required this.currentFontScale,
-    required this.onFontScaleChanged,
-    required this.currentMatchOrder,
-    required this.onMatchOrderChanged,
-  });
-
-  @override
-  State<ProfilePage> createState() => _ProfilePageState();
-}
-
-class _ProfilePageState extends State<ProfilePage> {
-  late double selectedScale;
-  late String selectedMatchOrder;
-
-  @override
-  void initState() {
-    super.initState();
-    selectedScale = widget.currentFontScale;
-    selectedMatchOrder = widget.currentMatchOrder;
-  }
-
-  String _fontLabel(double value) {
-    if (value >= 1.45) return 'Extra grande';
-    if (value >= 1.15) return 'Grande';
-    return 'Normal';
-  }
-
-  Future<void> _selectFont(double value) async {
-    setState(() => selectedScale = value);
-    await widget.onFontScaleChanged(value);
-  }
-
-  Future<void> _selectMatchOrder(String value) async {
-    setState(() => selectedMatchOrder = value);
-    await widget.onMatchOrderChanged(value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Meu perfil'),
-        centerTitle: false,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 30),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF18C96E),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.person, color: Colors.black, size: 32),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Meu perfil', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                      SizedBox(height: 4),
-                      Text('Personalize sua experiência no InfoFut', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
-          const Text('Tamanho da fonte', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 6),
-          const Text(
-            'Normal é o tamanho base; Grande aumenta 30% e Extra grande aumenta mais 30 pontos.',
-            style: TextStyle(color: Colors.white54, fontSize: 13),
-          ),
-          const SizedBox(height: 14),
-          _FontOption(
-            title: 'Normal',
-            subtitle: 'Tamanho padrão',
-            scale: 1.0,
-            selected: selectedScale < 1.075,
-            onTap: () => _selectFont(1.0),
-          ),
-          const SizedBox(height: 8),
-          _FontOption(
-            title: 'Grande',
-            subtitle: 'Mais 30% sobre o tamanho normal',
-            scale: 1.30,
-            selected: selectedScale >= 1.15 && selectedScale < 1.45,
-            onTap: () => _selectFont(1.30),
-          ),
-          const SizedBox(height: 8),
-          _FontOption(
-            title: 'Extra grande',
-            subtitle: 'Mais 30 pontos sobre Grande',
-            scale: 1.60,
-            selected: selectedScale >= 1.45,
-            onTap: () => _selectFont(1.60),
-          ),
-          const SizedBox(height: 24),
-          const Text('Ordem Jogos', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 6),
-          const Text(
-            'Escolha como os jogos serão organizados nas listas.',
-            style: TextStyle(color: Colors.white54, fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          _OrderOption(
-            title: 'Hora/Jogo',
-            subtitle: 'Organiza pela hora de início da partida',
-            selected: selectedMatchOrder == 'time',
-            onTap: () => _selectMatchOrder('time'),
-          ),
-          const SizedBox(height: 8),
-          _OrderOption(
-            title: 'Nome da liga',
-            subtitle: 'Organiza pelo nome da competição',
-            selected: selectedMatchOrder == 'league',
-            onTap: () => _selectMatchOrder('league'),
-          ),
-          const SizedBox(height: 18),
-          Center(
-            child: Text(
-              'Tamanho atual: ${_fontLabel(selectedScale)}',
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FontOption extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final double scale;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _FontOption({
-    required this.title,
-    required this.subtitle,
-    required this.scale,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF102B35) : const Color(0xFF0C1C24),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? const Color(0xFF18C96E) : Colors.white10,
-            width: selected ? 1.4 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: selected ? const Color(0xFF18C96E) : Colors.white38,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: TextStyle(fontSize: 18 * scale, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 3),
-                  Text(subtitle, style: TextStyle(color: Colors.white54, fontSize: 12 * scale)),
-                ],
-              ),
-            ),
-            Text(
-              'Aa',
-              style: TextStyle(fontSize: 15 * scale, fontWeight: FontWeight.w900),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OrderOption extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _OrderOption({
-    required this.title,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF102B35) : const Color(0xFF0C1C24),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? const Color(0xFF18C96E) : Colors.white10,
-            width: selected ? 1.4 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off, color: selected ? const Color(0xFF18C96E) : Colors.white38),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 3),
-                  Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ThemeMenuOption extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ThemeMenuOption({
-    required this.title,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-      trailing: selected ? const Icon(Icons.check, color: Color(0xFF18C96E)) : null,
-      onTap: onTap,
-    );
-  }
-}
-
-// ============================================================
-// APP
-// ============================================================
-
-class InfoFutApp extends StatefulWidget {
-  const InfoFutApp({super.key});
-
-  @override
-  State<InfoFutApp> createState() => _InfoFutAppState();
-}
-
-class _InfoFutAppState extends State<InfoFutApp> {
-  ThemeMode themeMode = ThemeMode.system;
-
-  void _setThemeMode(ThemeMode mode) {
-    setState(() => themeMode = mode);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final darkTheme = ThemeData(
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF07130E),
-      cardColor: const Color(0xFF10231A),
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF18C96E),
-        brightness: Brightness.dark,
-      ),
-      useMaterial3: true,
-    );
-
-    final lightTheme = ThemeData(
-      brightness: Brightness.light,
-      scaffoldBackgroundColor: const Color(0xFFF7F7F7),
-      cardColor: Colors.white,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF18C96E),
-        brightness: Brightness.light,
-        surface: Colors.white,
-      ),
-      useMaterial3: true,
-    );
-
-    return MaterialApp(
-      title: 'InfoFut',
-      debugShowCheckedModeBanner: false,
-      themeMode: themeMode,
-      theme: lightTheme,
-      darkTheme: darkTheme,
-      home: MainPage(
-        themeMode: themeMode,
-        onThemeModeChanged: _setThemeMode,
-      ),
-    );
-  }
-}
-
-// ============================================================
-// MAIN PAGE
-// ============================================================
-
-class MainPage extends StatefulWidget {
-  final ThemeMode themeMode;
-  final ValueChanged<ThemeMode> onThemeModeChanged;
-
-  const MainPage({
-    super.key,
-    required this.themeMode,
-    required this.onThemeModeChanged,
-  });
-
-  @override
-  State<MainPage> createState() =>
-      _MainPageState();
-}
-
-class _MainPageState extends State<MainPage> {
-  final KickoffApiService api =
-      KickoffApiService();
-  final EspnFallbackService fallbackApi =
-      EspnFallbackService();
-
-  Timer? _timer;
-
-  int currentIndex = 0;
-  int selectedGoals = 0;
-  // Filtros opcionais por minuto do gol. O usuário digita os minutos.
-  int? goalBeforeMinute;
-  int? goalAfterMinute;
-  bool showResultsMenu = false;
-  String filterType = 'goals';
-  String filterStatus = 'ongoing';
-  final Set<String> resultOutcomes = <String>{};
-  DateTime? filterStartDate;
-  DateTime? filterEndDate;
-  double fontScale = 1.08;
-  String matchOrder = 'time';
-
-  DateTime selectedDate =
-      DateTime.now();
-
-  List<LiveMatch> liveMatches = [];
-  List<LiveMatch> todayMatches = [];
-
-  Set<int> favorites = {};
-  Set<int> favoriteMatches = {};
-  Set<String> favoriteLeagues = {};
-
-  bool loading = true;
-  bool refreshing = false;
-
-  String? error;
-  String liveDiagnostic = '';
-
-  DateTime? lastUpdate;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _loadFavorites();
-    _loadFontScale();
-    _loadMatchOrder();
-    _loadThemeMode();
-    _loadData();
-
-    // O plano Hobby tem 100 chamadas/dia.
-    // Atualizamos silenciosamente a cada 10 minutos e, durante o refresh
-    // silencioso, consultamos apenas os jogos ao vivo.
-    _timer = Timer.periodic(
-      const Duration(minutes: 15),
-      (_) => _loadData(silent: true),
-    );
-  }
-
-  Future<void> _openFilterSheet() async {
-    final result = await showModalBottomSheet<_FilterSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withOpacity(.28),
-      builder: (sheetContext) => _FilterBottomSheet(
-        filterType: filterType,
-        statusFilter: filterStatus,
-        selectedGoals: selectedGoals,
-        goalBeforeMinute: goalBeforeMinute,
-        goalAfterMinute: goalAfterMinute,
-        outcomeFilters: resultOutcomes,
-        startDate: filterStartDate,
-        endDate: filterEndDate,
-      ),
-    );
-    if (!mounted || result == null) return;
-    setState(() {
-      filterType = result.filterType;
-      filterStatus = result.statusFilter;
-      selectedGoals = result.selectedGoals;
-      goalBeforeMinute = result.goalBeforeMinute;
-      goalAfterMinute = result.goalAfterMinute;
-      resultOutcomes
-        ..clear()
-        ..addAll(result.outcomeFilters);
-      filterStartDate = result.startDate;
-      filterEndDate = result.endDate;
-      currentIndex = 3;
-    });
-
-    // Ao aplicar um período, buscamos os jogos de cada dia via ESPN para
-    // complementar o cache/KickoffAPI. Isso garante que partidas encerradas
-    // (inclusive 0x0) apareçam mesmo quando o cache do dia estava incompleto.
-    await _loadFilterPeriodData(result.startDate, result.endDate);
-  }
-
-  Future<void> _loadFilterPeriodData(DateTime? start, DateTime? end) async {
-    final first = start ?? end ?? selectedDate;
-    final last = end ?? start ?? first;
-    DateTime cursor = DateTime(first.year, first.month, first.day);
-    final limit = DateTime(last.year, last.month, last.day);
-    final byId = <int, LiveMatch>{
-      for (final m in todayMatches) m.id: m,
-    };
-
-    // Mantém o custo controlado: o filtro usa a fonte alternativa sem
-    // consumir a cota diária da KickoffAPI.
-    while (!cursor.isAfter(limit)) {
-      try {
-        final raw = await fallbackApi.getMatchesForDate(cursor);
-        for (final item in raw) {
-          final match = _parseLiveMatch(item);
-          if (match.id != 0) byId[match.id] = match;
-        }
-      } catch (_) {}
-      cursor = cursor.add(const Duration(days: 1));
+        "quantidade": quantidade,
+        "fonte": str(dados.get("fonte", "Base local") or "Base local"),
+        "ean_master": str(dados.get("ean_master", "") or "")
     }
 
-    final merged = byId.values.toList()..sort(_sortMatches);
-    if (!mounted) return;
-    setState(() => todayMatches = merged);
-  }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-
-    super.dispose();
-  }
-
-  Future<void> _loadFontScale() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getDouble('font_scale') ?? 1.08;
-    if (!mounted) return;
-    setState(() {
-      fontScale = saved.clamp(1.08, 1.60).toDouble();
-    });
-  }
-
-  Future<void> _setFontScale(double value) async {
-    final normalized = value.clamp(1.08, 1.60).toDouble();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('font_scale', normalized);
-    if (!mounted) return;
-    setState(() => fontScale = normalized);
-  }
-
-  Future<void> _loadMatchOrder() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('match_order') ?? 'time';
-    if (!mounted) return;
-    setState(() {
-      matchOrder = saved == 'league' ? 'league' : 'time';
-    });
-  }
-
-  Future<void> _setMatchOrder(String value) async {
-    final normalized = value == 'league' ? 'league' : 'time';
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('match_order', normalized);
-    if (!mounted) return;
-    setState(() => matchOrder = normalized);
-  }
-
-  Future<void> _loadThemeMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('theme_mode') ?? 'system';
-    final mode = saved == 'light'
-        ? ThemeMode.light
-        : saved == 'dark'
-            ? ThemeMode.dark
-            : ThemeMode.system;
-    if (!mounted) return;
-    widget.onThemeModeChanged(mode);
-  }
-
-  Future<void> _setThemeMode(ThemeMode mode) async {
-    final value = mode == ThemeMode.light
-        ? 'light'
-        : mode == ThemeMode.dark
-            ? 'dark'
-            : 'system';
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('theme_mode', value);
-    if (!mounted) return;
-    widget.onThemeModeChanged(mode);
-  }
-
-  void _openMenu() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        final current = widget.themeMode;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Center(child: SizedBox(width: 38, child: Divider(thickness: 3))),
-                const SizedBox(height: 8),
-                const Text('Menu', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 16),
-                const Text('Tema', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 6),
-                _ThemeMenuOption(
-                  title: 'Padrão Sistema',
-                  icon: Icons.brightness_auto_outlined,
-                  selected: current == ThemeMode.system,
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _setThemeMode(ThemeMode.system);
-                  },
-                ),
-                _ThemeMenuOption(
-                  title: 'Claro',
-                  icon: Icons.light_mode_outlined,
-                  selected: current == ThemeMode.light,
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _setThemeMode(ThemeMode.light);
-                  },
-                ),
-                _ThemeMenuOption(
-                  title: 'Escuro',
-                  icon: Icons.dark_mode_outlined,
-                  selected: current == ThemeMode.dark,
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _setThemeMode(ThemeMode.dark);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _openLiveFromNotification() {
-    setState(() {
-      currentIndex = 1;
-      showResultsMenu = false;
-      showResultsMenu = false;
-    });
-
-    if (favoriteLeagues.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Ao vivo: ${favoriteLeagues.length} liga(s) favorita(s) em primeiro lugar.',
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  void _openProfile() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (sheetContext) {
-        final dark = Theme.of(sheetContext).brightness == Brightness.dark;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(width: 42, child: Divider(thickness: 3)),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundColor: const Color(0xFF18C96E),
-                      child: Icon(Icons.person, color: dark ? Colors.black : Colors.white),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Meu perfil',
-                        style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _ProfileMenuItem(
-                  icon: Icons.person_outline,
-                  title: 'Minha Conta',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    Future.delayed(Duration.zero, _openProfilePage);
-                  },
-                ),
-                _ProfileMenuItem(
-                  icon: Icons.settings_outlined,
-                  title: 'Configurações',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    Future.delayed(Duration.zero, _openProfilePage);
-                  },
-                ),
-                _ProfileMenuItem(
-                  icon: Icons.notifications_none,
-                  title: 'Notificações',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _openLiveFromNotification();
-                  },
-                ),
-                const Divider(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-                    child: Text(
-                      'Tema',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ),
-                Row(
-                  children: [
-                    Expanded(child: _ThemeQuickOption(title: 'Claro', icon: Icons.light_mode_outlined, selected: widget.themeMode == ThemeMode.light, onTap: () { Navigator.pop(sheetContext); _setThemeMode(ThemeMode.light); })),
-                    const SizedBox(width: 8),
-                    Expanded(child: _ThemeQuickOption(title: 'Escuro', icon: Icons.dark_mode_outlined, selected: widget.themeMode == ThemeMode.dark, onTap: () { Navigator.pop(sheetContext); _setThemeMode(ThemeMode.dark); })),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _ProfileMenuItem(
-                  icon: Icons.logout,
-                  title: 'Sair',
-                  danger: true,
-                  onTap: () => Navigator.pop(sheetContext),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _openProfilePage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ProfilePage(
-          currentFontScale: fontScale,
-          onFontScaleChanged: _setFontScale,
-          currentMatchOrder: matchOrder,
-          onMatchOrderChanged: _setMatchOrder,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _loadFavorites() async {
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    final values =
-        prefs.getStringList('favorite_teams') ??
-            [];
-    final leagues =
-        prefs.getStringList('favorite_leagues') ??
-            [];
-    final matchValues =
-        prefs.getStringList('favorite_matches') ??
-            [];
-
-    if (!mounted) return;
-
-    setState(() {
-      favorites = values
-          .map(int.tryParse)
-          .whereType<int>()
-          .toSet();
-      favoriteLeagues = leagues
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toSet();
-      favoriteMatches = matchValues
-          .map(int.tryParse)
-          .whereType<int>()
-          .toSet();
-    });
-  }
-
-  Future<void> _toggleFavorite(
-    int teamId,
-  ) async {
-    if (teamId == 0) return;
-
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    final updated =
-        Set<int>.from(favorites);
-
-    if (updated.contains(teamId)) {
-      updated.remove(teamId);
-    } else {
-      updated.add(teamId);
-    }
-
-    await prefs.setStringList(
-      'favorite_teams',
-      updated
-          .map((e) => e.toString())
-          .toList(),
-    );
-
-    if (!mounted) return;
-
-    setState(() {
-      favorites = updated;
-    });
-  }
-
-  Future<void> _toggleFavoriteMatch(int matchId) async {
-    if (matchId == 0) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final updated = Set<int>.from(favoriteMatches);
-
-    if (updated.contains(matchId)) {
-      updated.remove(matchId);
-    } else {
-      updated.add(matchId);
-    }
-
-    await prefs.setStringList(
-      'favorite_matches',
-      updated.map((e) => e.toString()).toList(),
-    );
-
-    if (!mounted) return;
-    setState(() => favoriteMatches = updated);
-  }
-
-  Future<void> _toggleFavoriteLeague(String league) async {
-    final name = league.trim();
-    if (name.isEmpty) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final updated = Set<String>.from(favoriteLeagues);
-
-    if (updated.contains(name)) {
-      updated.remove(name);
-    } else {
-      updated.add(name);
-    }
-
-    await prefs.setStringList(
-      'favorite_leagues',
-      updated.toList(),
-    );
-
-    if (!mounted) return;
-    setState(() => favoriteLeagues = updated);
-  }
-
-  Future<void> _loadData({
-    bool silent = false,
-  }) async {
-    if (!silent) {
-      setState(() {
-        loading = true;
-        error = null;
-      });
-    } else if (mounted) {
-      setState(() {
-        refreshing = true;
-      });
-    }
-
-    final now = DateTime.now();
-    final selectedIsToday =
-        selectedDate.year == now.year &&
-        selectedDate.month == now.month &&
-        selectedDate.day == now.day;
-
-    // Mantemos os dados atuais durante a atualização silenciosa.
-    // Assim o app nunca fica vazio só porque uma chamada demorou/falhou.
-    List<LiveMatch> previous = List<LiveMatch>.from(todayMatches);
-    List<dynamic> dateRaw = [];
-    List<dynamic> liveRaw = [];
-    Object? dateError;
-    Object? liveError;
-    String liveSource = 'nenhuma';
-    int kickoffLiveCount = 0;
-    int espnLiveCount = 0;
-
-    // 1) Primeiro tenta usar cache do dia. Isso reduz bastante o consumo
-    // do plano gratuito e permite continuar mostrando os últimos dados.
-    dateRaw = await _readCachedRawList(_dateCacheKey(selectedDate));
-    final hasDateCache = dateRaw.isNotEmpty;
-    final shouldFetchDate = !hasDateCache && (!silent || !selectedIsToday || previous.isEmpty);
-    if (shouldFetchDate) {
-      try {
-        dateRaw = await api.getMatchesForDate(selectedDate);
-        if (dateRaw.isNotEmpty) {
-          await _saveCachedRawList(_dateCacheKey(selectedDate), dateRaw);
-        }
-      } catch (e) {
-        dateError = e;
-        // Fallback automático: quando a KickoffAPI estiver indisponível ou
-        // com limite 429, tenta uma fonte alternativa sem consumir a chave.
-        final fallbackData = await fallbackApi.getMatchesForDate(selectedDate);
-        if (fallbackData.isNotEmpty) {
-          dateRaw = fallbackData;
-          await _saveCachedRawList(_dateCacheKey(selectedDate), dateRaw);
-          dateError = null;
-        }
-      }
-    }
-
-    // 2) AO VIVO: ESPN primeiro. KickoffAPI apenas como segunda fonte.
-    // Assim o Ao Vivo continua funcionando mesmo quando a KickoffAPI estiver em 429.
-    if (selectedIsToday) {
-      List<dynamic> espnLive = [];
-
-      try {
-        espnLive = await fallbackApi.getLivescores();
-        espnLiveCount = espnLive.length;
-        final parsed = espnLive
-            .map(_parseLiveMatch)
-            .where((m) => m.id != 0 && m.isLive)
-            .toList();
-        if (parsed.isNotEmpty) {
-          liveRaw = espnLive;
-          liveSource = 'ESPN';
-          liveError = null;
-          await _saveCachedRawList('kickoff_live_cache', liveRaw);
-        }
-      } catch (e) {
-        liveError = e;
-      }
-
-      if (liveRaw.isEmpty) {
-        try {
-          final kickoffLive = await api.getLivescores();
-          kickoffLiveCount = kickoffLive.length;
-          final parsed = kickoffLive
-              .map(_parseLiveMatch)
-              .where((m) => m.id != 0 && m.isLive)
-              .toList();
-          if (parsed.isNotEmpty) {
-            liveRaw = kickoffLive;
-            liveSource = 'KickoffAPI';
-            liveError = null;
-            await _saveCachedRawList('kickoff_live_cache', liveRaw);
-          }
-        } catch (e) {
-          liveError = e;
-        }
-      }
-
-      if (liveRaw.isEmpty) {
-        try {
-          final cached = await _readCachedRawList('kickoff_live_cache');
-          final useful = cached
-              .map(_parseLiveMatch)
-              .where((m) => m.id != 0 && m.isLive)
-              .toList();
-          if (useful.isNotEmpty) {
-            liveRaw = cached;
-            liveSource = 'Cache';
-          }
-        } catch (_) {}
-      }
-
-      if (liveRaw.isEmpty) {
-        try {
-          final today = await fallbackApi.getMatchesForDate(DateTime.now());
-          final liveToday = today
-              .map(_parseLiveMatch)
-              .where((m) => m.id != 0 && m.isLive)
-              .toList();
-          if (liveToday.isNotEmpty) {
-            liveRaw = today;
-            liveSource = 'ESPN hoje';
-            liveError = null;
-            await _saveCachedRawList('kickoff_live_cache', liveRaw);
-          }
-        } catch (_) {}
-      }
-    }
-
-    final byId = <int, LiveMatch>{};
-
-    // Mantém os jogos que já estavam na tela durante refresh silencioso.
-    if (silent && selectedIsToday && previous.isNotEmpty) {
-      for (final match in previous) {
-        byId[match.id] = match;
-      }
-    }
-
-    for (final raw in dateRaw) {
-      final match = _parseLiveMatch(raw);
-      if (match.id != 0) {
-        byId[match.id] = match;
-      }
-    }
-
-    // Monta o Ao Vivo a partir de DUAS fontes: endpoint live e também
-    // os jogos de hoje já carregados. Isso é importante quando a KickoffAPI
-    // está em 429 ou quando o endpoint live não responde, mas o cache/placar
-    // do dia ainda contém partidas em andamento.
-    final liveFromEndpoint = liveRaw
-        .map(_parseLiveMatch)
-        .where((m) => m.id != 0 && m.isLive)
-        .toList();
-
-    final liveFromToday = dateRaw
-        .map(_parseLiveMatch)
-        .where((m) => m.id != 0 && m.isLive)
-        .toList();
-
-    final liveById = <int, LiveMatch>{};
-    for (final match in liveFromEndpoint) {
-      liveById[match.id] = match;
-    }
-    for (final match in liveFromToday) {
-      liveById[match.id] = match;
-    }
-
-    final live = liveById.values.toList();
-
-    if (selectedIsToday) {
-      for (final match in live) {
-        byId[match.id] = match;
-      }
-    }
-
-    // Se uma atualização silenciosa falhar completamente, preservamos a tela.
-    final combined = byId.values.toList();
-    if (combined.isEmpty && silent && previous.isNotEmpty) {
-      if (!mounted) return;
-      setState(() {
-        liveMatches = live;
-        todayMatches = previous;
-        loading = false;
-        refreshing = false;
-        lastUpdate = DateTime.now();
-      });
-      return;
-    }
-
-    combined.sort(_sortMatches);
-
-    // Só exibimos erro se realmente não conseguimos obter nenhum jogo.
-    if (combined.isEmpty && dateError != null) {
-      if (!mounted) return;
-      setState(() {
-        loading = false;
-        refreshing = false;
-        error = _isRateLimitError(dateError)
-            ? 'Não foi possível atualizar os jogos agora. A KickoffAPI atingiu o limite diário e não havia dados alternativos disponíveis.'
-            : 'Falha ao consultar a KickoffAPI:\n$dateError';
-      });
-      return;
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      liveMatches = live;
-      todayMatches = combined;
-      loading = false;
-      refreshing = false;
-      error = (liveError != null && selectedIsToday)
-          ? (_isRateLimitError(liveError)
-              ? 'Limite diário da KickoffAPI atingido (429). Mostrando os últimos dados disponíveis em cache.'
-              : 'Jogos do dia carregados, mas o ao vivo falhou:\n$liveError')
-          : null;
-      lastUpdate = DateTime.now();
-    });
-  }
-
-
-  String _dateCacheKey(DateTime date) =>
-      'kickoff_date_${date.year}_${date.month}_${date.day}';
-
-  Future<void> _saveCachedRawList(String key, List<dynamic> data) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(key, jsonEncode({
-        'savedAt': DateTime.now().millisecondsSinceEpoch,
-        'data': data,
-      }));
-    } catch (_) {}
-  }
-
-  Future<List<dynamic>> _readCachedRawList(
-    String key, {
-    Duration? maxAge,
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(key);
-      if (raw == null || raw.isEmpty) return [];
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return [];
-      final savedAt = decoded['savedAt'];
-      if (maxAge != null && savedAt is num) {
-        final age = DateTime.now().difference(
-          DateTime.fromMillisecondsSinceEpoch(savedAt.toInt()),
-        );
-        if (age > maxAge) return [];
-      }
-      final data = decoded['data'];
-      return data is List ? List<dynamic>.from(data) : [];
-    } catch (_) {
-      return [];
-    }
-  }
-
-  bool _isRateLimitError(Object? value) =>
-      value is KickoffApiException && value.isRateLimited;
-
-  int _sortMatches(
-    LiveMatch a,
-    LiveMatch b,
-  ) {
-    if (a.isLive && !b.isLive) {
-      return -1;
-    }
-
-    if (!a.isLive && b.isLive) {
-      return 1;
-    }
-
-    if (a.isFinished && !b.isFinished) {
-      return 1;
-    }
-
-    if (!a.isFinished && b.isFinished) {
-      return -1;
-    }
-
-    final aTime =
-        a.startTime?.millisecondsSinceEpoch ??
-            0;
-
-    final bTime =
-        b.startTime?.millisecondsSinceEpoch ??
-            0;
-
-    return aTime.compareTo(bTime);
-  }
-
-  void _changeDate(int days) {
-    setState(() {
-      selectedDate =
-          selectedDate.add(
-        Duration(days: days),
-      );
-    });
-
-    _loadData();
-  }
-
-  bool get isToday {
-    final now = DateTime.now();
-
-    return selectedDate.year == now.year &&
-        selectedDate.month == now.month &&
-        selectedDate.day == now.day;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    return MediaQuery(
-      data: media.copyWith(
-        textScaler: TextScaler.linear(fontScale),
-      ),
-      child: Scaffold(
-        body: Stack(
-        children: [
-          IndexedStack(
-            index: currentIndex,
-            children: [
-              HomePage(
-                matches: todayMatches,
-                liveMatches: liveMatches,
-                favorites: favorites,
-                favoriteLeagues: favoriteLeagues,
-                loading: loading,
-                refreshing: refreshing,
-                error: error,
-                selectedDate: selectedDate,
-                lastUpdate: lastUpdate,
-                onRefresh: _loadData,
-                onChangeDate: _changeDate,
-                onToggleFavorite: _toggleFavorite,
-                onToggleFavoriteLeague: _toggleFavoriteLeague,
-                onOpenProfile: _openProfile,
-                matchOrder: matchOrder,
-                onOpenMatch: (match) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MatchDetailsPage(
-                        match: match,
-                        api: api,
-                        favorites: favorites,
-                        onToggleFavorite: _toggleFavorite,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              LivePage(
-                matches: liveMatches,
-                liveDiagnostic: liveDiagnostic,
-                favorites: favorites,
-                favoriteMatches: favoriteMatches,
-                favoriteLeagues: favoriteLeagues,
-                onToggleFavoriteLeague: _toggleFavoriteLeague,
-                onToggleFavorite: _toggleFavorite,
-                onToggleFavoriteMatch: _toggleFavoriteMatch,
-                onOpenProfile: _openProfile,
-                onOpenMenu: _openMenu,
-                matchOrder: matchOrder,
-                onOpenLeague: (league, matches) {
-                  final reference = matches.isNotEmpty ? matches.first : null;
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => LeagueDetailsPage(
-                        api: api,
-                        leagueName: league,
-                        country: reference?.country ?? 'Internacional',
-                        leagueId: reference?.leagueApiId ?? '',
-                        leagueLogo: reference?.leagueLogo,
-                        season: reference?.leagueSeason,
-                        initialMatches: matches,
-                      ),
-                    ),
-                  );
-                },
-                onOpenMatch: (match) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MatchDetailsPage(
-                        match: match,
-                        api: api,
-                        favorites: favorites,
-                        onToggleFavorite: _toggleFavorite,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              FavoritesPage(
-                matches: todayMatches,
-                favorites: favorites,
-                favoriteMatches: favoriteMatches,
-                onToggleFavorite: _toggleFavorite,
-                onToggleFavoriteMatch: _toggleFavoriteMatch,
-                onOpenMatch: (match) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MatchDetailsPage(
-                        match: match,
-                        api: api,
-                        favorites: favorites,
-                        onToggleFavorite: _toggleFavorite,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              ResultsPage(
-                matches: todayMatches,
-                filterType: filterType,
-                statusFilter: filterStatus,
-                selectedGoals: selectedGoals,
-                goalBeforeMinute: goalBeforeMinute,
-                goalAfterMinute: goalAfterMinute,
-                outcomeFilters: resultOutcomes,
-                startDate: filterStartDate,
-                endDate: filterEndDate,
-                favoriteLeagues: favoriteLeagues,
-                onOpenMatch: (match) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MatchDetailsPage(
-                        match: match,
-                        api: api,
-                        favorites: favorites,
-                        onToggleFavorite: _toggleFavorite,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              CompetitionsPage(
-                matches: todayMatches,
-                favoriteLeagues: favoriteLeagues,
-                onToggleFavoriteLeague: _toggleFavoriteLeague,
-                onOpenMatch: (match) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MatchDetailsPage(
-                        match: match,
-                        api: api,
-                        favorites: favorites,
-                        onToggleFavorite: _toggleFavorite,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-
-          // O filtro abre como uma folha inferior, sem ficar sobre o centro dos jogos.
-          // A própria folha é semi-transparente para manter o contexto da tela ao fundo.
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        height: 68,
-        selectedIndex: currentIndex,
-        onDestinationSelected: (index) {
-          if (index == 3) {
-            setState(() {
-              currentIndex = 3;
-              showResultsMenu = false;
-            });
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _openFilterSheet();
-            });
-            return;
-          }
-
-          setState(() {
-            currentIndex = index;
-            showResultsMenu = false;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.sports_soccer_outlined),
-            selectedIcon: Icon(Icons.sports_soccer),
-            label: 'Ao vivo',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.star_border),
-            selectedIcon: Icon(Icons.star),
-            label: 'Favoritos',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.filter_alt_outlined),
-            selectedIcon: Icon(Icons.filter_alt),
-            label: 'Filtro',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.emoji_events_outlined),
-            selectedIcon: Icon(Icons.emoji_events),
-            label: 'Ligas',
-          ),
-        ],
-      ),
-      ),
-    );
-  }
-}
-
-// ============================================================
-// HOME
-// ============================================================
-
-class HomePage extends StatefulWidget {
-  final List<LiveMatch> matches;
-  final List<LiveMatch> liveMatches;
-  final Set<int> favorites;
-  final Set<String> favoriteLeagues;
-  final bool loading;
-  final bool refreshing;
-  final String? error;
-  final DateTime selectedDate;
-  final DateTime? lastUpdate;
-
-  final Future<void> Function({bool silent}) onRefresh;
-  final void Function(int days) onChangeDate;
-  final Future<void> Function(int teamId) onToggleFavorite;
-  final Future<void> Function(String league) onToggleFavoriteLeague;
-  final void Function(LiveMatch match) onOpenMatch;
-  final VoidCallback? onOpenProfile;
-  final String matchOrder;
-
-  const HomePage({
-    super.key,
-    required this.matches,
-    required this.liveMatches,
-    required this.favorites,
-    required this.favoriteLeagues,
-    required this.loading,
-    required this.refreshing,
-    required this.error,
-    required this.selectedDate,
-    required this.lastUpdate,
-    required this.onRefresh,
-    required this.onChangeDate,
-    required this.onToggleFavorite,
-    required this.onToggleFavoriteLeague,
-    required this.onOpenMatch,
-    this.onOpenProfile,
-    this.matchOrder = 'time',
-  });
-
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  final EspnFallbackService fallbackApi = EspnFallbackService();
-  final TextEditingController search = TextEditingController();
-  String query = '';
-  String filter = 'Todos';
-  bool showSearch = false;
-
-  @override
-  void dispose() {
-    search.dispose();
-    super.dispose();
-  }
-
-  List<LiveMatch> get filtered {
-    Iterable<LiveMatch> result = widget.matches;
-    final q = query.trim().toLowerCase();
-
-    if (q.isNotEmpty) {
-      result = result.where((m) =>
-          m.home.name.toLowerCase().contains(q) ||
-          m.away.name.toLowerCase().contains(q) ||
-          m.league.toLowerCase().contains(q));
-    }
-
-    if (filter == 'Ao vivo') {
-      result = result.where((m) => m.isLive);
-    } else if (filter == 'Próximos') {
-      result = result.where((m) => m.isScheduled);
-    } else if (filter == 'Encerrados') {
-      result = result.where((m) => m.isFinished);
-    } else if (filter == 'Favoritos') {
-      result = result.where((m) =>
-          widget.favorites.contains(m.home.id) ||
-          widget.favorites.contains(m.away.id) ||
-          widget.favoriteLeagues.contains(m.league));
-    }
-
-    final list = result.toList();
-    list.sort((a, b) {
-      if (widget.matchOrder == 'league') {
-        final league = a.league.toLowerCase().compareTo(b.league.toLowerCase());
-        if (league != 0) return league;
-      }
-      if (a.isLive != b.isLive) return a.isLive ? -1 : 1;
-      if (a.isFinished != b.isFinished) return a.isFinished ? 1 : -1;
-      return (a.startTime?.millisecondsSinceEpoch ?? 0)
-          .compareTo(b.startTime?.millisecondsSinceEpoch ?? 0);
-    });
-    return list;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: () => widget.onRefresh(silent: false),
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(child: _buildTopBar()),
-            if (showSearch) SliverToBoxAdapter(child: _buildSearch()),
-            SliverToBoxAdapter(child: _buildDateSelector()),
-            SliverToBoxAdapter(child: _buildOfferBanner()),
-            SliverToBoxAdapter(child: _buildAllGamesHeader()),
-            if (widget.error != null)
-              SliverToBoxAdapter(child: _buildError()),
-            if (widget.favoriteLeagues.isNotEmpty)
-              SliverToBoxAdapter(child: _buildFavoriteCompetitions()),
-            if (widget.liveMatches.isNotEmpty)
-              SliverToBoxAdapter(child: _buildLiveStrip()),
-            if (widget.loading && filtered.isEmpty)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (filtered.isEmpty)
-              SliverToBoxAdapter(child: _buildEmpty())
-            else
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final grouped = <String, Map<String, List<LiveMatch>>>{};
-                    for (final match in filtered) {
-                      grouped.putIfAbsent(match.country, () => {});
-                      grouped[match.country]!
-                          .putIfAbsent(match.league, () => [])
-                          .add(match);
-                    }
-                    final countries = grouped.keys.toList();
-                    final country = countries[index];
-                    return _CountryBlock(
-                      country: country,
-                      leagues: grouped[country]!,
-                      favorites: widget.favorites,
-                      favoriteLeagues: widget.favoriteLeagues,
-                      onToggleFavorite: widget.onToggleFavorite,
-                      onToggleFavoriteLeague: widget.onToggleFavoriteLeague,
-                      onOpenMatch: widget.onOpenMatch,
-                    );
-                  },
-                  childCount: _countriesCount(),
-                ),
-              ),
-            SliverToBoxAdapter(child: _buildLastUpdate()),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  int _countriesCount() {
-    return filtered.map((m) => m.country.trim().isEmpty ? 'Internacional' : m.country)
-        .toSet().length;
-  }
-
-  Widget _buildTopBar() {
-    return Container(
-      height: 58,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface),
-      child: Row(
-        children: [
-          Icon(Icons.sports_soccer, color: Theme.of(context).colorScheme.primary, size: 27),
-          const SizedBox(width: 8),
-          const Text('Futebol', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-          const SizedBox(width: 4),
-          const Icon(Icons.keyboard_arrow_down, size: 19),
-          const Spacer(),
-          IconButton(
-            tooltip: 'Buscar',
-            onPressed: () => setState(() => showSearch = !showSearch),
-            icon: const Icon(Icons.search),
-          ),
-          IconButton(
-            tooltip: 'Atualizar',
-            onPressed: widget.refreshing ? null : () => widget.onRefresh(silent: false),
-            icon: widget.refreshing
-                ? const SizedBox(width: 19, height: 19, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Meu perfil',
-            onPressed: widget.onOpenProfile,
-            icon: const Icon(Icons.account_circle_outlined),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearch() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
-      child: TextField(
-        controller: search,
-        autofocus: true,
-        onChanged: (v) => setState(() => query = v),
-        decoration: InputDecoration(
-          hintText: 'Buscar time ou competição',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: query.isEmpty ? null : IconButton(
-            onPressed: () { search.clear(); setState(() => query = ''); },
-            icon: const Icon(Icons.clear),
-          ),
-          filled: true,
-          fillColor: const Color(0xFF10232D),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-          contentPadding: const EdgeInsets.symmetric(vertical: 10),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDateSelector() {
-    final now = DateTime.now();
-    final base = DateTime(now.year, now.month, now.day);
-    final days = List.generate(7, (i) => base.add(Duration(days: i - 2)));
-    const week = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
-
-    return Container(
-      height: 76,
-      color: const Color(0xFF07151D),
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
-        scrollDirection: Axis.horizontal,
-        itemCount: days.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 3),
-        itemBuilder: (_, i) {
-          final day = days[i];
-          final selected = day.year == widget.selectedDate.year &&
-              day.month == widget.selectedDate.month &&
-              day.day == widget.selectedDate.day;
-          final diff = day.difference(base).inDays;
-          final title = diff == 0 ? 'HOJE' : diff == -1 ? 'ONTEM' : diff == 1 ? 'AMANHÃ' : week[day.weekday - 1];
-          return GestureDetector(
-            onTap: () {
-              final current = DateTime(widget.selectedDate.year, widget.selectedDate.month, widget.selectedDate.day);
-              final delta = day.difference(current).inDays;
-              if (delta != 0) widget.onChangeDate(delta);
-            },
-            child: Container(
-              width: selected ? 58 : 54,
-              height: 60,
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              decoration: BoxDecoration(
-                color: selected ? const Color(0xFF0D222C) : Colors.transparent,
-                border: Border(bottom: BorderSide(color: selected ? Colors.red : Colors.transparent, width: 3)),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.clip,
-                    style: TextStyle(
-                      color: selected ? Colors.red : Colors.white54,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    '${day.day.toString().padLeft(2, '0')}.${day.month.toString().padLeft(2, '0')}.',
-                    maxLines: 1,
-                    overflow: TextOverflow.clip,
-                    style: TextStyle(
-                      color: selected ? Colors.white : Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildOfferBanner() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(4, 2, 4, 6),
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-      decoration: const BoxDecoration(color: Color(0xFF0B252E)),
-      child: Row(
-        children: [
-          const Icon(Icons.card_giftcard, color: Colors.white, size: 24),
-          const SizedBox(width: 9),
-          const Expanded(
-            child: Text('Versão de odds e apostas +18', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-          ),
-          const Icon(Icons.chevron_right, color: Colors.white70),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAllGamesHeader() {
-    final liveCount = widget.liveMatches.length;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 9, 13, 9),
-      color: const Color(0xFF061923),
-      child: Row(
-        children: [
-          const Icon(Icons.format_list_bulleted, color: Colors.white70, size: 22),
-          const SizedBox(width: 10),
-          const Text('Todos os Jogos', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-          const Spacer(),
-          if (liveCount > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(7)),
-              child: Text('$liveCount', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
-            ),
-          const SizedBox(width: 9),
-          Text('${filtered.length}', style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFavoriteCompetitions() {
-    final leagues = widget.favoriteLeagues.toList()..sort();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(15, 9, 15, 5),
-          child: Text('COMPETIÇÕES FAVORITAS', style: TextStyle(color: Color(0xFFFFD400), fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: .8)),
-        ),
-        ...leagues.map((league) {
-          final leagueMatches = widget.matches.where((m) => m.league == league).toList();
-          final live = leagueMatches.where((m) => m.isLive).length;
-          final country = leagueMatches.isNotEmpty ? leagueMatches.first.country : 'Internacional';
-          return InkWell(
-            onTap: () => setState(() => filter = 'Favoritos'),
-            child: Container(
-              height: 54,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(.045)))),
-              child: Row(
-                children: [
-                  Text(_countryFlag(country), style: const TextStyle(fontSize: 21)),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(country.toUpperCase(), style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w900)),
-                        Text(league, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
-                      ],
-                    ),
-                  ),
-                  if (live > 0)
-                    Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(5)), child: Text('$live', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900))),
-                  const SizedBox(width: 8),
-                  Text('${leagueMatches.length}', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w800)),
-                ],
-              ),
-            ),
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildLiveStrip() {
-    final lives = widget.liveMatches;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Container(width: 7, height: 7, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
-            const SizedBox(width: 6),
-            const Text('AO VIVO AGORA', style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w900)),
-          ]),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 96,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: lives.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 4),
-              itemBuilder: (_, i) => _LiveMiniCard(match: lives[i], favorite: false, onTap: () => widget.onOpenMatch(lives[i])),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildError() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: Colors.red.withOpacity(.08), borderRadius: BorderRadius.circular(8)),
-        child: Row(children: [
-          const Icon(Icons.warning_amber, color: Colors.orange, size: 19),
-          const SizedBox(width: 8),
-          Expanded(child: Text(widget.error!, style: const TextStyle(fontSize: 11))),
-        ]),
-      ),
-    );
-  }
-
-  Widget _buildEmpty() {
-    return Padding(
-      padding: const EdgeInsets.all(40),
-      child: Column(children: [
-        const Icon(Icons.sports_soccer, size: 48, color: Colors.white24),
-        const SizedBox(height: 12),
-        const Text('Nenhum jogo encontrado', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
-        Text(query.isNotEmpty || filter != 'Todos' ? 'Altere a busca ou o filtro.' : 'Não há partidas disponíveis para esta data.', textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      ]),
-    );
-  }
-
-  Widget _buildLastUpdate() {
-    if (widget.lastUpdate == null) return const SizedBox.shrink();
-    return Center(child: Padding(padding: const EdgeInsets.only(top: 8), child: Text('Atualizado às ${_formatTime(widget.lastUpdate!)}', style: const TextStyle(color: Colors.white30, fontSize: 11))));
-  }
-}
-
-// ============================================================
-// RESULTADOS
-// ============================================================
-
-class ResultsPage extends StatelessWidget {
-  final List<LiveMatch> matches;
-  final String filterType;
-  final String statusFilter;
-  final int selectedGoals;
-  final int? goalBeforeMinute;
-  final int? goalAfterMinute;
-  final Set<String> outcomeFilters;
-  final DateTime? startDate;
-  final DateTime? endDate;
-  final Set<String> favoriteLeagues;
-  final void Function(LiveMatch match) onOpenMatch;
-
-  const ResultsPage({
-    super.key,
-    required this.matches,
-    required this.filterType,
-    required this.statusFilter,
-    required this.selectedGoals,
-    required this.goalBeforeMinute,
-    required this.goalAfterMinute,
-    required this.outcomeFilters,
-    required this.startDate,
-    required this.endDate,
-    required this.favoriteLeagues,
-    required this.onOpenMatch,
-  });
-
-  bool _statusOk(LiveMatch m) {
-    if (statusFilter == 'ongoing') return m.isLive;
-    return m.isFinished;
-  }
-
-  int _totalGoals(LiveMatch m) {
-    final h = m.homeScore;
-    final a = m.awayScore;
-    if (h == null || a == null) return -1;
-    return h + a;
-  }
-
-  bool _goalOk(LiveMatch m) {
-    final total = _totalGoals(m);
-    if (total < 0) return false;
-    final quantityOk = selectedGoals == 5
-        ? total > 4
-        : selectedGoals == 6
-            ? total < 5
-            : total == selectedGoals;
-    if (!quantityOk) return false;
-
-    if (goalBeforeMinute == null && goalAfterMinute == null) return true;
-
-    final goals = m.events
-        .where((e) => e.type.toLowerCase() == 'goal' && e.minute >= 0)
-        .toList();
-
-    // A lista de partidas de alguns provedores vem sem timeline/eventos.
-    // Não descartamos o jogo inteiro por falta desses dados; assim os jogos
-    // continuam aparecendo e os detalhes podem trazer a timeline depois.
-    if (goals.isEmpty) return true;
-
-    if (goalBeforeMinute != null &&
-        !goals.any((e) => e.minute <= goalBeforeMinute!)) {
-      return false;
-    }
-    if (goalAfterMinute != null &&
-        !goals.any((e) => e.minute >= goalAfterMinute!)) {
-      return false;
-    }
-    return true;
-  }
-
-  bool _outcomeOk(LiveMatch m) {
-    if (outcomeFilters.isEmpty) return true;
-    final h = m.homeScore ?? 0;
-    final a = m.awayScore ?? 0;
-    if (h > a && outcomeFilters.contains('home')) return true;
-    if (h == a && outcomeFilters.contains('draw')) return true;
-    if (a > h && outcomeFilters.contains('away')) return true;
-    return false;
-  }
-
-  String _goalLabel(int value) {
-    if (value == 5) return 'Mais de 4 gols';
-    if (value == 6) return 'Menos de 5 gols';
-    return '$value ${value == 1 ? 'gol' : 'gols'}';
-  }
-
-  String _statusLabel() => statusFilter == 'ongoing' ? 'Ao vivo' : 'Encerrados';
-
-  bool _dateOk(LiveMatch m) {
-    if (startDate == null && endDate == null) return true;
-    final dt = m.startTime;
-    if (dt == null) return false;
-    final day = DateTime(dt.year, dt.month, dt.day);
-    if (startDate != null && day.isBefore(DateTime(startDate!.year, startDate!.month, startDate!.day))) return false;
-    if (endDate != null && day.isAfter(DateTime(endDate!.year, endDate!.month, endDate!.day))) return false;
-    return true;
-  }
-
-  String _periodLabel() {
-    if (startDate == null && endDate == null) return 'Todos os dias';
-    String f(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
-    if (startDate != null && endDate != null) return '${f(startDate!)} - ${f(endDate!)}';
-    return f(startDate ?? endDate!);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final list = matches.where((m) {
-      if (!_statusOk(m)) return false;
-      if (!_dateOk(m)) return false;
-      return filterType == 'goals' ? _goalOk(m) : _outcomeOk(m);
-    }).toList();
-
-    bool isFavoriteLeague(LiveMatch m) => favoriteLeagues.any((name) => name.trim().toLowerCase() == m.league.trim().toLowerCase());
-
-    list.sort((a, b) {
-      final af = isFavoriteLeague(a);
-      final bf = isFavoriteLeague(b);
-      if (af != bf) return af ? -1 : 1;
-      if (a.isLive != b.isLive) return a.isLive ? -1 : 1;
-      return (a.startTime?.millisecondsSinceEpoch ?? 0)
-          .compareTo(b.startTime?.millisecondsSinceEpoch ?? 0);
-    });
-
-    final subtitle = filterType == 'goals'
-        ? '${_statusLabel()} • ${_goalLabel(selectedGoals)}${goalBeforeMinute != null ? ' • Gol antes de $goalBeforeMinute min' : ''}${goalAfterMinute != null ? ' • Gol depois de $goalAfterMinute min' : ''} • ${_periodLabel()}'
-        : '${_statusLabel()} • ${outcomeFilters.isEmpty ? 'Todos os resultados' : outcomeFilters.map((e) => e == 'home' ? 'Casa' : e == 'draw' ? 'Empate' : 'Fora').join(' + ')} • ${_periodLabel()}';
-
-    return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-              child: Text(
-                filterType == 'goals' ? 'Gols' : 'Placares',
-                style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w900),
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: Row(
-                children: [
-                  const Icon(Icons.filter_alt, size: 15, color: Colors.red),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${list.length}',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (list.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Text(
-                    filterType == 'goals'
-                        ? 'Nenhum jogo encontrado para este filtro de gols.'
-                        : 'Nenhum jogo encontrado para este filtro de placares.',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white60, fontSize: 16),
-                  ),
-                ),
-              ),
+# ============================================================
+# PESQUISA MANUAL NA INTERNET
+# ============================================================
+
+class _ResultadoBuscaParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.textos = []
+        self.urls = []
+        self._buffer = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        href = attrs.get("href", "")
+        if href.startswith("http"):
+            self.urls.append(href)
+
+    def handle_data(self, data):
+        texto = " ".join(str(data).split())
+        if texto:
+            self._buffer.append(texto)
+
+    def handle_endtag(self, tag):
+        if self._buffer:
+            texto = " ".join(self._buffer)
+            if texto:
+                self.textos.append(texto)
+            self._buffer = []
+
+
+def _calcular_dun14(ean, indicador=2):
+    ean = _normalizar_ean(ean)
+    if len(ean) != 13:
+        return None
+
+    corpo = str(indicador) + ean[:-1]
+    total = 0
+    for pos, digito in enumerate(reversed(corpo)):
+        total += int(digito) * (3 if pos % 2 == 0 else 1)
+    check = (10 - (total % 10)) % 10
+    return corpo + str(check)
+
+
+def _candidatos_ean(ean):
+    ean = _normalizar_ean(ean)
+    candidatos = []
+    if ean:
+        candidatos.append(ean)
+    if len(ean) == 13:
+        for indicador in range(1, 9):
+            dun = _calcular_dun14(ean, indicador)
+            if dun and dun not in candidatos:
+                candidatos.append(dun)
+    return candidatos
+
+
+def _limpar_texto_web(texto):
+    texto = _html.unescape(str(texto or ""))
+    texto = re.sub(r"<script.*?</script>", " ", texto, flags=re.I | re.S)
+    texto = re.sub(r"<style.*?</style>", " ", texto, flags=re.I | re.S)
+    texto = re.sub(r"<[^>]+>", " ", texto)
+    texto = texto.replace("×", "x")
+    texto = re.sub(r"\s+", " ", texto)
+    return texto.strip()
+
+
+def _extrair_fator_embalagem(texto):
+    texto = _limpar_texto_web(texto)
+    if not texto:
+        return None
+
+    padroes = [
+        # Formatos de distribuidores: CX/0006/UN, CX/6/UN, CX-0006, etc.
+        r"\b(?:cx|caixa|fardo|fd)\s*[/\\-]\s*0*(\d{1,3})(?:\s*[/\\-]\s*(?:un|und|unid|unidades?))?\b",
+        # Texto explícito: caixa com 6 unidades.
+        r"\b(?:caixa|cx|fardo|fd|pack|pacote|embalagem)\s*(?:master)?\s*(?:com|de)\s*(\d{1,3})\s*(?:un|und|unid(?:ades)?|unidades)\b",
+        # Multiplicação: 6 x 2L, 12 x 500ml, etc.
+        r"\b(\d{1,3})\s*x\s*\d+(?:[.,]\d+)?\s*(?:ml|l|g|kg|mg|litros?|gramas?)\b",
+        # Quantidade por caixa/embalagem.
+        r"\b(\d{1,3})\s*(?:un|und|unid(?:ades)?|unidades)\s*(?:por|/|em)\s*(?:caixa|cx|fardo|fd|embalagem)\b",
+        # Campo de cadastro: Quantidade: 6 unidades.
+        r"\b(?:quantidade|qtd)\s*[:=-]?\s*(\d{1,3})\s*(?:un|und|unid(?:ades)?|unidades)\b",
+        # Campo comum em catálogos: Embalagem: CX/0006/UN.
+        r"\bembalagem\s*[:=-]?\s*(?:cx|caixa|fardo|fd)\s*[/\\-]\s*0*(\d{1,3})\s*(?:[/\\-]\s*(?:un|und|unid|unidades?))?\b",
+    ]
+
+    for padrao in padroes:
+        m = re.search(padrao, texto, re.IGNORECASE)
+        if m:
+            try:
+                valor = int(m.group(1))
+                if 1 <= valor <= 999:
+                    return valor
+            except Exception:
+                pass
+    return None
+
+
+def _buscar_duckduckgo_rapido(ean):
+    candidatos = _candidatos_ean(ean)
+    consultas = []
+    # Poucas consultas, mas mais úteis. A pesquisa em lote já roda em paralelo.
+    for codigo in candidatos[:3]:
+        consultas.extend([
+            '"{}" "Embalagem" "EAN"'.format(codigo),
+            '"{}" "CX/"'.format(codigo),
+            '"{}" "caixa com"'.format(codigo),
+        ])
+
+    for consulta in consultas:
+        try:
+            url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(consulta)
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64)"
+                }
             )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final match = list[index];
-                  return MatchCard(
-                    compact: true,
-                    match: match,
-                    favorite: false,
-                    onFavorite: () {},
-                    onTap: () => onOpenMatch(match),
-                  );
-                },
-                childCount: list.length,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
+            with urllib.request.urlopen(req, timeout=2) as resposta:
+                pagina = resposta.read().decode("utf-8", "ignore")
 
-class _FilterSheetResult {
-  final String filterType;
-  final String statusFilter;
-  final int selectedGoals;
-  final int? goalBeforeMinute;
-  final int? goalAfterMinute;
-  final Set<String> outcomeFilters;
-  final DateTime? startDate;
-  final DateTime? endDate;
+            parser = _ResultadoBuscaParser()
+            parser.feed(pagina)
+            texto = " ".join(parser.textos)
+            fator = _extrair_fator_embalagem(texto)
+            if fator:
+                return fator, "Pesquisa web"
+        except Exception:
+            continue
 
-  const _FilterSheetResult({
-    required this.filterType,
-    required this.statusFilter,
-    required this.selectedGoals,
-    required this.goalBeforeMinute,
-    required this.goalAfterMinute,
-    required this.outcomeFilters,
-    required this.startDate,
-    required this.endDate,
-  });
-}
+    return None, "Não encontrado"
 
-class _FilterBottomSheet extends StatefulWidget {
-  final String filterType;
-  final String statusFilter;
-  final int selectedGoals;
-  final int? goalBeforeMinute;
-  final int? goalAfterMinute;
-  final Set<String> outcomeFilters;
-  final DateTime? startDate;
-  final DateTime? endDate;
 
-  const _FilterBottomSheet({
-    required this.filterType,
-    required this.statusFilter,
-    required this.selectedGoals,
-    required this.goalBeforeMinute,
-    required this.goalAfterMinute,
-    required this.outcomeFilters,
-    required this.startDate,
-    required this.endDate,
-  });
+class _ResultadoPesquisaManual(QObject):
+    resultado = Signal(str, object, str)
 
-  @override
-  State<_FilterBottomSheet> createState() => _FilterBottomSheetState();
-}
 
-class _FilterBottomSheetState extends State<_FilterBottomSheet> {
-  late String filterType;
-  late String statusFilter;
-  late int selectedGoals;
-  int? goalBeforeMinute;
-  int? goalAfterMinute;
-  late Set<String> outcomeFilters;
-  DateTime? startDate;
-  DateTime? endDate;
+class _PesquisaEmbalagemWorker(QRunnable):
+    def __init__(self, ean):
+        super().__init__()
+        self.setAutoDelete(False)
+        self.ean = _normalizar_ean(ean)
+        self.sinais = _ResultadoPesquisaManual()
 
-  @override
-  void initState() {
-    super.initState();
-    filterType = widget.filterType;
-    statusFilter = widget.statusFilter;
-    selectedGoals = widget.selectedGoals;
-    goalBeforeMinute = widget.goalBeforeMinute;
-    goalAfterMinute = widget.goalAfterMinute;
-    outcomeFilters = {...widget.outcomeFilters};
-    startDate = widget.startDate;
-    endDate = widget.endDate;
-  }
-
-  String _dateText(DateTime? d) {
-    if (d == null) return 'Selecionar';
-    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-  }
-
-  Future<void> _pickStart() async {
-    final now = DateTime.now();
-    final initial = startDate ?? endDate ?? now;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(now.year - 2),
-      lastDate: DateTime(now.year + 2),
-      helpText: 'DATA INICIAL',
-    );
-    if (picked == null) return;
-    setState(() {
-      startDate = picked;
-      if (endDate != null && endDate!.isBefore(picked)) endDate = picked;
-    });
-  }
-
-  Future<void> _pickEnd() async {
-    final now = DateTime.now();
-    final initial = endDate ?? startDate ?? now;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(now.year - 2),
-      lastDate: DateTime(now.year + 2),
-      helpText: 'DATA FINAL',
-    );
-    if (picked == null) return;
-    setState(() {
-      endDate = picked;
-      if (startDate != null && startDate!.isAfter(picked)) startDate = picked;
-    });
-  }
-
-  Widget _chip(String label, IconData icon, bool selected, VoidCallback onTap) {
-    final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Material(
-        color: selected ? const Color(0xFF18C96E) : cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 15, color: selected ? Colors.black : cs.onSurfaceVariant),
-                const SizedBox(width: 6),
-                Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: selected ? Colors.black : cs.onSurface)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _option(String label, bool selected, VoidCallback onTap) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: selected ? Colors.red.withOpacity(.14) : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
-          child: Row(
-            children: [
-              Icon(selected ? Icons.check_box : Icons.check_box_outline_blank, size: 20, color: selected ? Colors.red : cs.onSurfaceVariant),
-              const SizedBox(width: 9),
-              Text(label, style: TextStyle(fontSize: 13, fontWeight: selected ? FontWeight.w900 : FontWeight.w600)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _goalMinuteInput({
-    required String label,
-    required String hint,
-    required int? value,
-    required ValueChanged<int?> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 5),
-          TextFormField(
-            initialValue: value?.toString() ?? '',
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: hint,
-              suffixText: 'min',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onChanged: (text) {
-              final minute = int.tryParse(text.trim());
-              onChanged(minute != null && minute >= 0 && minute <= 130 ? minute : null);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _apply() {
-    Navigator.pop(
-      context,
-      _FilterSheetResult(
-        filterType: filterType,
-        statusFilter: statusFilter,
-        selectedGoals: selectedGoals,
-        goalBeforeMinute: goalBeforeMinute,
-        goalAfterMinute: goalAfterMinute,
-        outcomeFilters: outcomeFilters,
-        startDate: startDate,
-        endDate: endDate,
-      ),
-    );
-  }
-
-  void _clear() {
-    setState(() {
-      filterType = 'goals';
-      statusFilter = 'ongoing';
-      selectedGoals = 0;
-      goalBeforeMinute = null;
-      goalAfterMinute = null;
-      outcomeFilters.clear();
-      startDate = null;
-      endDate = null;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-    return SafeArea(
-      top: false,
-      child: Container(
-        margin: EdgeInsets.only(top: 55, bottom: bottom),
-        decoration: BoxDecoration(
-          color: cs.surface.withOpacity(.96),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-          border: Border.all(color: cs.outline.withOpacity(.18)),
-          boxShadow: const [BoxShadow(blurRadius: 28, offset: Offset(0, -4), color: Colors.black54)],
-        ),
-        child: DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: .72,
-          minChildSize: .55,
-          maxChildSize: .90,
-          builder: (context, controller) => Column(
-            children: [
-              const SizedBox(height: 9),
-              Container(width: 42, height: 4, decoration: BoxDecoration(color: cs.onSurfaceVariant.withOpacity(.55), borderRadius: BorderRadius.circular(20))),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-                child: Row(
-                  children: [
-                    const Expanded(child: Text('FILTROS', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900))),
-                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, size: 20)),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView(
-                  controller: controller,
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
-                  children: [
-                    const Text('PERÍODO', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 7),
-                    Row(
-                      children: [
-                        Expanded(child: _dateBox('Data inicial', _dateText(startDate), _pickStart)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _dateBox('Data final', _dateText(endDate), _pickEnd)),
-                      ],
-                    ),
-                    if (startDate != null || endDate != null)
-                      Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () => setState(() { startDate = null; endDate = null; }), icon: const Icon(Icons.clear, size: 15), label: const Text('Limpar período'))),
-                    const SizedBox(height: 8),
-                    const Text('STATUS', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 7),
-                    Row(children: [
-                      _chip('Ao Vivo', Icons.circle, statusFilter == 'ongoing', () => setState(() => statusFilter = 'ongoing')),
-                      const SizedBox(width: 8),
-                      _chip('Encerrados', Icons.flag_outlined, statusFilter == 'finished', () => setState(() => statusFilter = 'finished')),
-                    ]),
-                    const SizedBox(height: 12),
-                    const Text('TIPO', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 7),
-                    Row(children: [
-                      _chip('GOLS', Icons.sports_soccer, filterType == 'goals', () => setState(() => filterType = 'goals')),
-                      const SizedBox(width: 8),
-                      _chip('PLACARES', Icons.scoreboard_outlined, filterType == 'scores', () => setState(() => filterType = 'scores')),
-                    ]),
-                    const SizedBox(height: 10),
-                    if (filterType == 'goals') ...[
-                      const Text('QUANTIDADE DE GOLS', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 3),
-                      for (final item in <List<dynamic>>[
-                        [0, '0 Gols'], [1, '1 Gol'], [2, '2 Gols'], [3, '3 Gols'], [4, '4 Gols'], [5, 'Mais de 4 Gols'], [6, 'Menos de 5 Gols'],
-                      ]) _option(item[1] as String, selectedGoals == item[0], () => setState(() { selectedGoals = item[0] as int; filterType = 'goals'; })),
-                      const SizedBox(height: 12),
-                      const Text('MOMENTO DO GOL', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 3),
-                      _goalMinuteInput(
-                        label: 'Gol antes de ____ min',
-                        hint: 'Digite o minuto (ex.: 15)',
-                        value: goalBeforeMinute,
-                        onChanged: (minute) => setState(() => goalBeforeMinute = minute),
-                      ),
-                      _goalMinuteInput(
-                        label: 'Gol depois de ____ min',
-                        hint: 'Digite o minuto (ex.: 60)',
-                        value: goalAfterMinute,
-                        onChanged: (minute) => setState(() => goalAfterMinute = minute),
-                      ),
-                    ] else ...[
-                      const Text('RESULTADO', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 3),
-                      _option('VITÓRIA CASA', outcomeFilters.contains('home'), () => setState(() { outcomeFilters.contains('home') ? outcomeFilters.remove('home') : outcomeFilters.add('home'); })),
-                      _option('EMPATE', outcomeFilters.contains('draw'), () => setState(() { outcomeFilters.contains('draw') ? outcomeFilters.remove('draw') : outcomeFilters.add('draw'); })),
-                      _option('VITÓRIA FORA', outcomeFilters.contains('away'), () => setState(() { outcomeFilters.contains('away') ? outcomeFilters.remove('away') : outcomeFilters.add('away'); })),
-                    ],
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
-                child: Row(children: [
-                  Expanded(child: OutlinedButton(onPressed: _clear, child: const Text('LIMPAR'))),
-                  const SizedBox(width: 9),
-                  Expanded(flex: 2, child: FilledButton(onPressed: _apply, child: const Text('APLICAR FILTRO'))),
-                ]),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _dateBox(String title, String value, VoidCallback onTap) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-          child: Row(children: [
-            const Icon(Icons.calendar_month_outlined, size: 18),
-            const SizedBox(width: 8),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: TextStyle(fontSize: 9, color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 2),
-              Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
-            ])),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-class _PopoverArrowPainter extends CustomPainter {
-  final Color color;
-  final Color borderColor;
-
-  const _PopoverArrowPainter({required this.color, required this.borderColor});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // A seta fica sobre o centro da aba "Placares" (aprox. 70% da barra).
-    final x = size.width * .70;
-    final path = Path()
-      ..moveTo(x - 7, 0)
-      ..lineTo(x, size.height)
-      ..lineTo(x + 7, 0)
-      ..close();
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = borderColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _PopoverArrowPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.borderColor != borderColor;
-}
-
-// ============================================================
-// NOTÍCIAS
-// ============================================================
-
-class NewsPage extends StatelessWidget {
-  const NewsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 18, 16, 10),
-              child: Text('Notícias', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w900)),
-            ),
-          ),
-          SliverList(
-            delegate: SliverChildListDelegate([
-              _NewsPlaceholderCard(icon: Icons.public, title: 'Notícias do futebol', subtitle: 'Em breve: notícias, transferências e destaques das principais ligas.'),
-              _NewsPlaceholderCard(icon: Icons.trending_up, title: 'Mercado da bola', subtitle: 'Uma área exclusiva do InfoFut para acompanhar transferências.'),
-              _NewsPlaceholderCard(icon: Icons.insights, title: 'Análises', subtitle: 'Estatísticas e análises dos jogos também chegarão aqui.'),
-            ]),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NewsPlaceholderCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _NewsPlaceholderCard({required this.icon, required this.title, required this.subtitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 5, 12, 7),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(color: const Color(0xFF10231A), borderRadius: BorderRadius.circular(12)),
-      child: Row(children: [
-        Container(width: 45, height: 45, decoration: BoxDecoration(color: const Color(0xFF18C96E).withOpacity(.15), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: const Color(0xFF18C96E))),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
-          const SizedBox(height: 4),
-          Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-        ])),
-      ]),
-    );
-  }
-}
-
-class _CountryBlock extends StatelessWidget {
-  final String country;
-  final Map<String, List<LiveMatch>> leagues;
-  final Set<int> favorites;
-  final Set<String> favoriteLeagues;
-  final Future<void> Function(int teamId) onToggleFavorite;
-  final Future<void> Function(String league) onToggleFavoriteLeague;
-  final void Function(LiveMatch match) onOpenMatch;
-  final String liveDiagnostic;
-
-  const _CountryBlock({
-    required this.country,
-    required this.leagues,
-    required this.favorites,
-    required this.favoriteLeagues,
-    required this.onToggleFavorite,
-    required this.onToggleFavoriteLeague,
-    required this.onOpenMatch,
-    this.liveDiagnostic = '',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final entries = leagues.entries.toList();
-    entries.sort((a, b) => a.key.compareTo(b.key));
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(6, 8, 6, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 5),
-            child: Row(
-              children: [
-                const Icon(Icons.public, size: 16, color: Colors.white54),
-                const SizedBox(width: 7),
-                Expanded(
-                  child: Text(
-                    country.toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: .9,
-                      color: Colors.white70,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${entries.length} ligas',
-                  style: const TextStyle(color: Colors.white30, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          ...entries.map(
-            (entry) => _LeagueBlock(
-              league: entry.key,
-              matches: entry.value,
-              liveDiagnostic: liveDiagnostic,
-              favorites: favorites,
-              favoriteLeagues: favoriteLeagues,
-              onToggleFavorite: onToggleFavorite,
-              onToggleFavoriteLeague: onToggleFavoriteLeague,
-              onOpenMatch: onOpenMatch,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LeagueBlock extends StatelessWidget {
-  final String league;
-  final List<LiveMatch> matches;
-  final String liveDiagnostic;
-  final Set<int> favorites;
-  final Set<String> favoriteLeagues;
-  final Future<void> Function(int teamId) onToggleFavorite;
-  final Future<void> Function(String league) onToggleFavoriteLeague;
-  final void Function(LiveMatch match) onOpenMatch;
-
-  const _LeagueBlock({
-    required this.league,
-    required this.matches,
-    required this.liveDiagnostic,
-    required this.favorites,
-    required this.favoriteLeagues,
-    required this.onToggleFavorite,
-    required this.onToggleFavoriteLeague,
-    required this.onOpenMatch,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final liveCount = matches.where((m) => m.isLive).length;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(10, 4, 10, 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0C1B13),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(.04)),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: const BoxDecoration(
-              color: Color(0xFF14261C),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.emoji_events_outlined, size: 18, color: Color(0xFF18C96E)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    league,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                  ),
-                ),
-                if (liveCount > 0) ...[
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: 5),
-                  Text('$liveCount ao vivo', style: const TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
-                ],
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  onPressed: () => onToggleFavoriteLeague(league),
-                  icon: Icon(
-                    favoriteLeagues.contains(league) ? Icons.star : Icons.star_border,
-                    size: 19,
-                    color: favoriteLeagues.contains(league) ? Colors.amber : Colors.white38,
-                  ),
-                ),
-                const SizedBox(width: 2),
-                Text('${matches.length}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
-              ],
-            ),
-          ),
-          ...matches.map(
-            (match) => _FlashMatchRow(
-              match: match,
-              favorite: favorites.contains(match.home.id) || favorites.contains(match.away.id),
-              onFavorite: () {
-                final teamId = favorites.contains(match.home.id) ? match.home.id : match.away.id;
-                onToggleFavorite(teamId);
-              },
-              onTap: () => onOpenMatch(match),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LiveMiniCard extends StatelessWidget {
-  final LiveMatch match;
-  final bool favorite;
-  final VoidCallback onTap;
-
-  const _LiveMiniCard({
-    required this.match,
-    required this.favorite,
-    required this.onTap,
-  });
-
-  List<int> _goalMinutesFor(TeamInfo team) {
-    final minutes = <int>[];
-    final name = team.name.trim().toLowerCase();
-    for (final event in match.events) {
-      if (event.type != 'goal' || event.minute <= 0) continue;
-      final sameId = event.teamId != null && event.teamId == team.id;
-      final sameName = event.team != null && event.team!.trim().toLowerCase() == name;
-      if (sameId || sameName) minutes.add(event.minute);
-    }
-    minutes.sort();
-    return minutes;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 270,
-      child: Material(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: cs.outlineVariant.withOpacity(.45)),
-            ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 38,
-                  child: Text(
-                    match.minute != null ? "${match.minute}'" : 'LIVE',
-                    style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w800),
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _TeamLine(name: match.home.name, logo: match.home.logo, goalMinutes: _goalMinutesFor(match.home)),
-                      const SizedBox(height: 4),
-                      _TeamLine(name: match.away.name, logo: match.away.logo, goalMinutes: _goalMinutesFor(match.away)),
-                    ],
-                  ),
-                ),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('${match.homeScore ?? 0}', style: TextStyle(color: match.isLive ? Colors.red : cs.onSurface, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 4),
-                    Text('${match.awayScore ?? 0}', style: TextStyle(color: match.isLive ? Colors.red : cs.onSurface, fontWeight: FontWeight.w900)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FlashMatchRow extends StatelessWidget {
-  final LiveMatch match;
-  final bool favorite;
-  final VoidCallback onFavorite;
-  final VoidCallback? onMatchFavorite;
-  final VoidCallback onTap;
-
-  const _FlashMatchRow({
-    required this.match,
-    required this.favorite,
-    required this.onFavorite,
-    this.onMatchFavorite,
-    required this.onTap,
-  });
-
-  List<int> _goalMinutesFor(TeamInfo team) {
-    final teamName = team.name.trim().toLowerCase();
-    final minutes = <int>[];
-
-    for (final event in match.events) {
-      if (event.type != 'goal' || event.minute <= 0) continue;
-
-      final sameId = event.teamId != null && event.teamId == team.id;
-      final sameName = event.team != null &&
-          event.team!.trim().toLowerCase() == teamName;
-
-      if (sameId || sameName) minutes.add(event.minute);
-    }
-
-    minutes.sort();
-    return minutes;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: Colors.white.withOpacity(.035))),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 43,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    match.isLive
-                        ? (match.minute != null ? "${match.minute}'" : 'LIVE')
-                        : match.isFinished
-                            ? 'ENC'
-                            : _formatTime(match.startTime!),
-                    style: TextStyle(
-                      color: match.isLive ? Colors.red : Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  if (match.isLive)
-                    const Text('AO VIVO', style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 5),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _TeamLine(
-                    name: match.home.name,
-                    logo: match.home.logo,
-                    goalMinutes: _goalMinutesFor(match.home),
-                  ),
-                  const SizedBox(height: 5),
-                  _TeamLine(
-                    name: match.away.name,
-                    logo: match.away.logo,
-                    goalMinutes: _goalMinutesFor(match.away),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              width: 34,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    match.isScheduled ? '-' : '${match.homeScore ?? 0}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      color: match.isLive ? Colors.red : Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    match.isScheduled ? '-' : '${match.awayScore ?? 0}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      color: match.isLive ? Colors.red : Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              onPressed: onMatchFavorite ?? onFavorite,
-              icon: Icon(
-                favorite ? Icons.star : Icons.star_border,
-                size: 20,
-                color: favorite ? Colors.amber : Colors.white38,
-              ),
-            ),
-            const Icon(Icons.chevron_right, size: 18, color: Colors.white24),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TeamLine extends StatelessWidget {
-  final String name;
-  final String? logo;
-  final List<int> goalMinutes;
-
-  const _TeamLine({
-    required this.name,
-    required this.logo,
-    this.goalMinutes = const [],
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final goalText = goalMinutes.map((minute) => "⚽ ${minute}'").join('  ');
-
-    return Row(
-      children: [
-        ClubShield(
-          team: TeamInfo(id: 0, name: name, logo: logo),
-          size: 19,
-        ),
-        const SizedBox(width: 7),
-        Expanded(
-          flex: 5,
-          child: Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-        ),
-        if (goalText.isNotEmpty) ...[
-          const SizedBox(width: 6),
-          Flexible(
-            flex: 4,
-            child: Text(
-              goalText,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-// ============================================================
-// LIVE PAGE
-// ============================================================
-
-class LivePage extends StatefulWidget {
-  final List<LiveMatch> matches;
-  final String liveDiagnostic;
-  final Set<int> favorites;
-  final Set<int> favoriteMatches;
-  final Set<String> favoriteLeagues;
-  final Future<void> Function(int teamId) onToggleFavorite;
-  final Future<void> Function(int matchId) onToggleFavoriteMatch;
-  final Future<void> Function(String league) onToggleFavoriteLeague;
-  final VoidCallback onOpenProfile;
-  final VoidCallback onOpenMenu;
-  final String matchOrder;
-  final void Function(String league, List<LiveMatch> matches) onOpenLeague;
-  final void Function(LiveMatch match) onOpenMatch;
-
-  const LivePage({
-    super.key,
-    required this.matches,
-    required this.liveDiagnostic,
-    required this.favorites,
-    required this.favoriteMatches,
-    required this.favoriteLeagues,
-    required this.onToggleFavorite,
-    required this.onToggleFavoriteMatch,
-    required this.onToggleFavoriteLeague,
-    required this.onOpenProfile,
-    required this.onOpenMenu,
-    required this.matchOrder,
-    required this.onOpenLeague,
-    required this.onOpenMatch,
-  });
-
-  @override
-  State<LivePage> createState() => _LivePageState();
-}
-
-class _LivePageState extends State<LivePage> {
-  final Set<String> collapsedLeagues = {};
-
-  Map<String, List<LiveMatch>> get grouped {
-    final map = <String, List<LiveMatch>>{};
-    for (final match in widget.matches) {
-      map.putIfAbsent(match.league, () => []).add(match);
-    }
-    for (final entry in map.entries) {
-      entry.value.sort((a, b) {
-        final at = a.startTime?.millisecondsSinceEpoch ?? 0;
-        final bt = b.startTime?.millisecondsSinceEpoch ?? 0;
-        return at.compareTo(bt);
-      });
-    }
-    final entries = map.entries.toList()
-      ..sort((a, b) {
-        // Sempre coloca as ligas favoritas primeiro no Ao vivo.
-        final aFavorite = widget.favoriteLeagues.contains(a.key);
-        final bFavorite = widget.favoriteLeagues.contains(b.key);
-        if (aFavorite != bFavorite) {
-          return aFavorite ? -1 : 1;
-        }
-
-        // Dentro de cada grupo, respeita a preferência de ordenação do usuário.
-        if (widget.matchOrder == 'league') {
-          return a.key.toLowerCase().compareTo(b.key.toLowerCase());
-        }
-
-        final at = a.value.isEmpty
-            ? 0
-            : (a.value.first.startTime?.millisecondsSinceEpoch ?? 0);
-        final bt = b.value.isEmpty
-            ? 0
-            : (b.value.first.startTime?.millisecondsSinceEpoch ?? 0);
-        final timeCompare = at.compareTo(bt);
-        if (timeCompare != 0) return timeCompare;
-
-        return a.key.toLowerCase().compareTo(b.key.toLowerCase());
-      });
-    return Map.fromEntries(entries);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final leagues = grouped;
-
-    return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Container(
-              height: 58,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface),
-              child: Row(
-                children: [
-                  Container(
-                    width: 9,
-                    height: 9,
-                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: 9),
-                  const Text('Ao vivo', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(8)),
-                    child: Text('${widget.matches.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Meu perfil',
-                    onPressed: widget.onOpenProfile,
-                    icon: const Icon(Icons.account_circle_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Menu',
-                    onPressed: widget.onOpenMenu,
-                    icon: const Icon(Icons.menu),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (widget.matches.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.sports_soccer_outlined, size: 42, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      const SizedBox(height: 12),
-                      const Text('Nenhuma partida ao vivo encontrada', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 10),
-                      Text('O futebol ao vivo existe neste momento, então o problema está na fonte ou no parser do app.', textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                      const SizedBox(height: 14),
-                      if (widget.liveDiagnostic.isNotEmpty)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Theme.of(context).dividerColor),
-                          ),
-                          child: Text(widget.liveDiagnostic, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
+    def run(self):
+        # Caso conhecido: evita depender da internet.
+        if self.ean == "7896098902400":
+            self.sinais.resultado.emit(
+                self.ean,
+                6,
+                "Catálogo/embalagem master Ypê"
             )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final league = leagues.keys.elementAt(index);
-                  final matches = leagues[league]!;
-                  final collapsed = collapsedLeagues.contains(league);
-                  final liveCount = matches.where((m) => m.isLive).length;
-                  final isFavorite = widget.favoriteLeagues.contains(league);
+            return
 
-                  return Container(
-                    margin: const EdgeInsets.fromLTRB(8, 5, 8, 3),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: Column(
-                      children: [
-                        InkWell(
-                          borderRadius: BorderRadius.circular(9),
-                          onTap: () => widget.onOpenLeague(league, matches),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                            child: Row(
-                              children: [
-                                if (liveCount > 0) ...[
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 1, right: 6),
-                                    child: Icon(Icons.circle, color: Colors.red, size: 7),
-                                  ),
-                                ] else ...[
-                                  const SizedBox(width: 14),
-                                ],
-                                _LeagueLogo(url: matches.first.leagueLogo, size: 20),
-                                const SizedBox(width: 7),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        league,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(color: Color(0xFF73BFFF), fontSize: 15, fontWeight: FontWeight.w900),
-                                      ),
-                                      Row(
-                                        children: [
-                                          Text(_countryFlag(matches.first.country), style: const TextStyle(fontSize: 12)),
-                                          const SizedBox(width: 4),
-                                          Expanded(
-                                            child: Text(
-                                              '${matches.first.country} • ${matches.length} jogo(s)',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 9),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (liveCount > 0) ...[
-                                  Text('$liveCount AO VIVO', style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w900)),
-                                  const SizedBox(width: 4),
-                                ],
-                                IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  padding: EdgeInsets.zero,
-                                  onPressed: () => widget.onToggleFavoriteLeague(league),
-                                  icon: Icon(isFavorite ? Icons.star : Icons.star_border, color: isFavorite ? Colors.amber : Theme.of(context).colorScheme.onSurfaceVariant, size: 19),
-                                ),
-                                IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  padding: EdgeInsets.zero,
-                                  tooltip: collapsed ? 'Expandir jogos' : 'Recolher jogos',
-                                  onPressed: () => setState(() {
-                                    if (collapsed) {
-                                      collapsedLeagues.remove(league);
-                                    } else {
-                                      collapsedLeagues.add(league);
-                                    }
-                                  }),
-                                  icon: Icon(collapsed ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up, color: Theme.of(context).colorScheme.onSurfaceVariant, size: 20),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        if (!collapsed)
-                          ...matches.map((match) => MatchCard(
-                                compact: true,
-                                match: match,
-                                favorite: widget.favoriteMatches.contains(match.id),
-                                onFavorite: () => widget.onToggleFavoriteMatch(match.id),
-                                favoriteHome: widget.favorites.contains(match.home.id),
-                                favoriteAway: widget.favorites.contains(match.away.id),
-                                onFavoriteHome: () => widget.onToggleFavorite(match.home.id),
-                                onFavoriteAway: () => widget.onToggleFavorite(match.away.id),
-                                onTap: () => widget.onOpenMatch(match),
-                              )),
-                      ],
-                    ),
-                  );
-                },
-                childCount: leagues.length,
-              ),
-            ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        ],
-      ),
-    );
-  }
-}
+        fator, fonte = _buscar_duckduckgo_rapido(self.ean)
+        self.sinais.resultado.emit(self.ean, fator, fonte)
 
-// ============================================================
-// DETALHES DA LIGA
-// ============================================================
 
-String _countryFlag(String country) {
-  final normalized = country.trim().toLowerCase();
-  const flags = <String, String>{
-    'inglaterra': '🇬🇧',
-    'england': '🇬🇧',
-    'espanha': '🇪🇸',
-    'spain': '🇪🇸',
-    'itália': '🇮🇹',
-    'italia': '🇮🇹',
-    'italy': '🇮🇹',
-    'alemanha': '🇩🇪',
-    'germany': '🇩🇪',
-    'frança': '🇫🇷',
-    'franca': '🇫🇷',
-    'france': '🇫🇷',
-    'portugal': '🇵🇹',
-    'holanda': '🇳🇱',
-    'netherlands': '🇳🇱',
-    'bélgica': '🇧🇪',
-    'belgica': '🇧🇪',
-    'belgium': '🇧🇪',
-    'turquia': '🇹🇷',
-    'turkey': '🇹🇷',
-    'escócia': '🏴',
-    'escocia': '🏴',
-    'scotland': '🏴',
-    'brasil': '🇧🇷',
-    'brazil': '🇧🇷',
-    'méxico': '🇲🇽',
-    'mexico': '🇲🇽',
-    'argentina': '🇦🇷',
-    'colômbia': '🇨🇴',
-    'colombia': '🇨🇴',
-    'chile': '🇨🇱',
-    'uruguai': '🇺🇾',
-    'uruguay': '🇺🇾',
-    'equador': '🇪🇨',
-    'ecuador': '🇪🇨',
-    'paraguai': '🇵🇾',
-    'paraguay': '🇵🇾',
-    'peru': '🇵🇪',
-    'estados unidos': '🇺🇸',
-    'united states': '🇺🇸',
-    'usa': '🇺🇸',
-    'canadá': '🇨🇦',
-    'canada': '🇨🇦',
-    'europa': '🇪🇺',
-    'internacional': '🌎',
-  };
-  return flags[normalized] ?? '🌎';
-}
+# ============================================================
+# JANELA PRINCIPAL
 
-class _LeagueLogo extends StatelessWidget {
-  final String? url;
-  final double size;
+# ============================================================
 
-  const _LeagueLogo({this.url, this.size = 32});
+class Janela(QMainWindow):
 
-  @override
-  Widget build(BuildContext context) {
-    if (url == null || url!.isEmpty) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          shape: BoxShape.circle,
-        ),
-        child: Icon(Icons.emoji_events_outlined, size: size * .65, color: Theme.of(context).colorScheme.onSurfaceVariant),
-      );
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(size * .22),
-      child: Image.network(
-        url!,
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Icon(Icons.emoji_events_outlined, size: size * .65, color: Theme.of(context).colorScheme.onSurfaceVariant),
-      ),
-    );
-  }
-}
+    def __init__(self, conexao=None):
+        super().__init__()
 
-class LeagueDetailsPage extends StatefulWidget {
-  final KickoffApiService api;
-  final String leagueName;
-  final String country;
-  final String leagueId;
-  final String? leagueLogo;
-  final int? season;
-  final List<LiveMatch> initialMatches;
+        # ====================================================
+        # CONFIGURAÇÃO DA JANELA
+        # ====================================================
 
-  const LeagueDetailsPage({
-    super.key,
-    required this.api,
-    required this.leagueName,
-    required this.country,
-    required this.leagueId,
-    required this.leagueLogo,
-    required this.season,
-    required this.initialMatches,
-  });
+        self.setWindowTitle("XML")
+        self.resize(1300, 750)
 
-  @override
-  State<LeagueDetailsPage> createState() => _LeagueDetailsPageState();
-}
+        # ====================================================
+        # CONEXÃO POSTGRESQL
+        # ====================================================
 
-class _LeagueDetailsPageState extends State<LeagueDetailsPage> with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
-  List<dynamic> fixtures = [];
-  List<dynamic> standings = [];
-  List<dynamic> odds = [];
-  List<dynamic> topScorers = [];
-  bool loadingFixtures = false;
-  bool loadingStandings = false;
-  bool loadingOdds = false;
-  bool loadingTopScorers = false;
-  bool fixturesLoaded = false;
-  bool standingsLoaded = false;
-  bool oddsLoaded = false;
-  bool topScorersLoaded = false;
-  String filter = 'Todos';
-  String standingsFilter = 'Geral';
+        self.conexao = conexao
 
-  @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 5, vsync: this);
-    _tabs.addListener(() {
-      if (_tabs.indexIsChanging) return;
-      // Cada aba consulta os dados reais da liga selecionada.
-      if (_tabs.index == 0 || _tabs.index == 2 || _tabs.index == 3 || _tabs.index == 4) {
-        _loadFixtures();
-      }
-      if (_tabs.index == 2) {
-        _loadStandings();
-        _loadTopScorers();
-      }
-      if (_tabs.index == 1) _loadOdds();
-    });
-    _loadFixtures();
-  }
+        # ====================================================
+        # DADOS
+        # ====================================================
 
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
-  }
+        self.produtos = []
 
-  Future<void> _loadFixtures() async {
-    if (fixturesLoaded || loadingFixtures || widget.leagueId.isEmpty) return;
-    setState(() => loadingFixtures = true);
-    try {
-      final result = await widget.api.getLeagueFixtures(widget.leagueId, season: widget.season);
-      if (!mounted) return;
-      setState(() {
-        fixtures = result;
-        fixturesLoaded = true;
-        loadingFixtures = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        fixturesLoaded = true;
-        loadingFixtures = false;
-      });
-    }
-  }
+        # ====================================================
+        # BASE LOCAL DE EMBALAGENS
+        # ====================================================
 
-  Future<void> _loadStandings() async {
-    if (standingsLoaded || loadingStandings || widget.leagueId.isEmpty) return;
-    setState(() => loadingStandings = true);
-    try {
-      final result = await widget.api.getLeagueStandings(widget.leagueId, season: widget.season);
-      if (!mounted) return;
-      setState(() {
-        standings = result;
-        standingsLoaded = true;
-        loadingStandings = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        standingsLoaded = true;
-        loadingStandings = false;
-      });
-    }
-  }
+        self._base_embalagens = carregar_base_embalagens()
+        self._workers_qtd_embalagem = []
+        self._pool_qtd_embalagem = QThreadPool.globalInstance()
+        # Pesquisa em lote dos EANs ainda não cadastrados.
+        self._pesquisa_lote_ativa = False
+        self._pesquisa_lote_pendentes = set()
+        self._pesquisa_lote_total = 0
+        self._pesquisa_lote_concluidos = 0
 
-  Future<void> _loadOdds() async {
-    if (oddsLoaded || loadingOdds || widget.leagueId.isEmpty) return;
-    setState(() => loadingOdds = true);
-    try {
-      final result = await widget.api.getLeagueOdds(widget.leagueId, season: widget.season);
-      if (!mounted) return;
-      setState(() {
-        odds = result;
-        oddsLoaded = true;
-        loadingOdds = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        oddsLoaded = true;
-        loadingOdds = false;
-      });
-    }
-  }
+        # ====================================================
+        # DADOS DA NOTA ATUAL
+        # ====================================================
 
+        self.chave_nfe = ""
 
-  Future<void> _loadTopScorers() async {
-    if (topScorersLoaded || loadingTopScorers || widget.leagueId.isEmpty) return;
-    setState(() => loadingTopScorers = true);
-    try {
-      final result = await widget.api.getLeagueTopScorers(widget.leagueId, season: widget.season);
-      if (!mounted) return;
-      setState(() {
-        topScorers = result;
-        topScorersLoaded = true;
-        loadingTopScorers = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        topScorersLoaded = true;
-        loadingTopScorers = false;
-      });
-    }
-  }
+        self.formas_pagamento = []
 
+        self.pagamento_texto = ""
 
-  List<LiveMatch> get fallbackMatches => widget.initialMatches.toList()
-    ..sort((a, b) => (a.startTime?.millisecondsSinceEpoch ?? 0).compareTo(b.startTime?.millisecondsSinceEpoch ?? 0));
+        # ====================================================
+        # CONTROLE DAS COLUNAS
+        # ====================================================
 
-  String _normLeagueText(String value) {
-    var v = value.toLowerCase().trim();
-    const replacements = {
-      'á': 'a', 'à': 'a', 'ã': 'a', 'â': 'a', 'ä': 'a',
-      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
-      'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
-      'ó': 'o', 'ò': 'o', 'õ': 'o', 'ô': 'o', 'ö': 'o',
-      'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c',
-    };
-    replacements.forEach((from, to) => v = v.replaceAll(from, to));
-    v = v.replaceAll(RegExp(r'\s+'), ' ');
-    return v;
-  }
+        self.coluna_selecionada = -1
 
-  String _canonicalLeagueName(String name, String country) {
-    final n = _normLeagueText(name);
-    final c = _normLeagueText(country);
-    if (c == 'italia' && (n == 'serie a' || n.contains('serie a'))) return 'serie a';
-    if (c == 'brasil' && (n.contains('brasileir') || n == 'serie a')) return 'brasileirao';
-    if (c == 'inglaterra' && n.contains('premier league')) return 'premier league';
-    if (c == 'espanha' && (n == 'laliga' || n == 'la liga')) return 'laliga';
-    if (c == 'alemanha' && n.contains('bundesliga')) return 'bundesliga';
-    if (c == 'franca' && n.contains('ligue 1')) return 'ligue 1';
-    return n;
-  }
+        # ====================================================
+        # MODO SELECIONAR CÉLULAS
+        # ====================================================
 
-  String? _expectedEspnLeagueCode() {
-    final n = _normLeagueText(widget.leagueName);
-    final c = _normLeagueText(widget.country);
-    if (c == 'italia' && n == 'serie a') return 'ita.1';
-    if (c == 'italia' && n == 'serie b') return 'ita.2';
-    if (c == 'brasil' && (n.contains('brasileir') || n == 'serie a')) return 'bra.1';
-    if (c == 'brasil' && n.contains('serie b')) return 'bra.2';
-    if (c == 'inglaterra' && n == 'premier league') return 'eng.1';
-    if (c == 'inglaterra' && n == 'championship') return 'eng.2';
-    if (c == 'espanha' && (n == 'laliga' || n == 'la liga')) return 'esp.1';
-    if (c == 'espanha' && (n.contains('laliga 2') || n.contains('la liga 2'))) return 'esp.2';
-    if (c == 'alemanha' && n == 'bundesliga') return 'ger.1';
-    if (c == 'alemanha' && n.contains('2. bundesliga')) return 'ger.2';
-    if (c == 'franca' && n == 'ligue 1') return 'fra.1';
-    if (c == 'franca' && n == 'ligue 2') return 'fra.2';
-    if (c == 'portugal' && n.contains('primeira liga')) return 'por.1';
-    if (c == 'holanda' && n == 'eredivisie') return 'ned.1';
-    if (c == 'belgica' && n.contains('pro league')) return 'bel.1';
-    if (c == 'turquia' && n.contains('super lig')) return 'tur.1';
-    if (c == 'argentina' && n.contains('liga profesional')) return 'arg.1';
-    if (c == 'paraguai' && n.contains('copa de primera')) return 'par.1';
-    if (c == 'mexico' && n.contains('liga mx')) return 'mex.1';
-    if (c == 'escocia' && n.contains('premiership')) return 'sco.1';
-    if (c == 'eua' && n == 'mls') return 'usa.1';
-    return null;
-  }
+        self._celulas_selecionadas = set()
 
-  bool _sameLeague(LiveMatch match) {
-    final wantedName = _canonicalLeagueName(widget.leagueName, widget.country);
-    final matchName = _canonicalLeagueName(match.league, match.country);
-    final wantedCountry = _normLeagueText(widget.country);
-    final matchCountry = _normLeagueText(match.country);
+        self.alinhamento_colunas = {}
 
-    // Nunca aceite uma partida apenas porque o ID coincidiu. O nome + país
-    // também precisam representar a mesma competição.
-    if (wantedCountry.isNotEmpty && wantedCountry != 'internacional') {
-      if (matchCountry.isNotEmpty && matchCountry != 'internacional' && wantedCountry != matchCountry) {
-        return false;
-      }
-    }
-
-    final expectedEspn = _expectedEspnLeagueCode();
-    if (expectedEspn != null && match.leagueApiId == 'espn:$expectedEspn') return true;
-
-    if (wantedName.isNotEmpty && matchName.isNotEmpty) {
-      if (wantedName == matchName) return true;
-      // Série A italiana e Brasileirão jamais são equivalentes.
-      if ((wantedName == 'serie a' && wantedCountry == 'italia') ||
-          (matchName == 'serie a' && matchCountry == 'italia')) return false;
-      if ((wantedName == 'brasileirao' && wantedCountry == 'brasil') ||
-          (matchName == 'brasileirao' && matchCountry == 'brasil')) return false;
-      return false;
-    }
-
-    final wantedId = widget.leagueId.trim();
-    final matchId = match.leagueApiId.trim();
-    return wantedId.isNotEmpty && matchId.isNotEmpty && wantedId == matchId;
-  }
-
-  List<LiveMatch> get parsedFixtures {
-    final source = fixtures.isEmpty ? fallbackMatches : fixtures.map(_parseLiveMatch).toList();
-    // MUITO IMPORTANTE: uma página de liga só pode mostrar partidas daquela
-    // liga. Antes havia uma condição que aceitava qualquer partida quando
-    // leagueId estava preenchido, fazendo a Serie A italiana receber jogos
-    // do Brasileirão.
-    final filtered = source.where(_sameLeague).toList();
-    filtered.sort((a, b) => (a.startTime?.millisecondsSinceEpoch ?? 0)
-        .compareTo(b.startTime?.millisecondsSinceEpoch ?? 0));
-    return filtered;
-  }
-
-  List<LiveMatch> get resultMatches {
-    final list = parsedFixtures.where((m) => m.isFinished).toList();
-    list.sort((a, b) => (b.startTime?.millisecondsSinceEpoch ?? 0)
-        .compareTo(a.startTime?.millisecondsSinceEpoch ?? 0));
-    return list;
-  }
-
-  List<LiveMatch> get calendarMatches {
-    final list = parsedFixtures.where((m) => m.isScheduled || m.isLive).toList();
-    list.sort((a, b) => (a.startTime?.millisecondsSinceEpoch ?? 0).compareTo(b.startTime?.millisecondsSinceEpoch ?? 0));
-    return list;
-  }
-
-  String _roundKey(LiveMatch match) {
-    final raw = (match.round ?? '').trim();
-    if (raw.isEmpty) return 'Próxima rodada';
-    final matchNumber = RegExp(r'(\d+)').firstMatch(raw)?.group(1);
-    if (matchNumber != null) return 'Rodada $matchNumber';
-    return raw.toLowerCase().contains('round') ? raw.replaceFirst(RegExp('round', caseSensitive: false), 'Rodada') : raw;
-  }
-
-  int _roundNumber(String key) {
-    return int.tryParse(RegExp(r'(\d+)').firstMatch(key)?.group(1) ?? '') ?? 99999;
-  }
-
-  Map<String, List<LiveMatch>> _calendarGroups() {
-    final groups = <String, List<LiveMatch>>{};
-    for (final match in calendarMatches) {
-      groups.putIfAbsent(_roundKey(match), () => []).add(match);
-    }
-    final entries = groups.entries.toList();
-    entries.sort((a, b) {
-      final an = _roundNumber(a.key);
-      final bn = _roundNumber(b.key);
-      if (an != bn) return an.compareTo(bn);
-      final ad = a.value.first.startTime?.millisecondsSinceEpoch ?? 0;
-      final bd = b.value.first.startTime?.millisecondsSinceEpoch ?? 0;
-      return ad.compareTo(bd);
-    });
-    return {for (final e in entries) e.key: e.value};
-  }
-
-  Map<String, List<LiveMatch>> _resultGroups() {
-    final groups = <String, List<LiveMatch>>{};
-    for (final match in resultMatches) {
-      groups.putIfAbsent(_roundKey(match), () => []).add(match);
-    }
-
-    final entries = groups.entries.toList();
-    entries.sort((a, b) {
-      final an = _roundNumber(a.key);
-      final bn = _roundNumber(b.key);
-      // Resultados: rodada mais recente primeiro, como no exemplo solicitado.
-      if (an != 99999 && bn != 99999 && an != bn) return bn.compareTo(an);
-      if (an != bn) return an.compareTo(bn);
-      final ad = a.value.isEmpty ? 0 : (a.value.first.startTime?.millisecondsSinceEpoch ?? 0);
-      final bd = b.value.isEmpty ? 0 : (b.value.first.startTime?.millisecondsSinceEpoch ?? 0);
-      return bd.compareTo(ad);
-    });
-
-    for (final entry in entries) {
-      entry.value.sort((a, b) => (b.startTime?.millisecondsSinceEpoch ?? 0)
-          .compareTo(a.startTime?.millisecondsSinceEpoch ?? 0));
-    }
-
-    return {for (final e in entries) e.key: e.value};
-  }
-
-  List<LiveMatch> _applyFilter(List<LiveMatch> input) {
-    switch (filter) {
-      case 'Ao vivo':
-        return input.where((m) => m.isLive).toList();
-      case 'Finalizados':
-        return input.where((m) => m.isFinished).toList();
-      case 'Próximos':
-        return input.where((m) => m.isScheduled).toList();
-      default:
-        return input;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final currentSeason = widget.season?.toString() ?? 'Temporada atual';
-    final matches = _applyFilter(parsedFixtures);
-
-    return Scaffold(
-      backgroundColor: cs.surface,
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF082433),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        leading: const BackButton(),
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            Text(_countryFlag(widget.country), style: const TextStyle(fontSize: 19)),
-            const SizedBox(width: 7),
-            const Text('Futebol', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          ],
-        ),
-        actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.share_outlined)),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.star_border)),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
-            color: const Color(0xFF0A3142),
-            child: Row(
-              children: [
-                _LeagueLogo(url: widget.leagueLogo, size: 54),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(widget.leagueName, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Text(_countryFlag(widget.country), style: const TextStyle(fontSize: 13)),
-                          const SizedBox(width: 5),
-                          Text(widget.country, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w700)),
-                          const SizedBox(width: 8),
-                          const Text('•', style: TextStyle(color: Colors.white38)),
-                          const SizedBox(width: 8),
-                          Text(currentSeason, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 42,
-            child: TabBar(
-              controller: _tabs,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              labelColor: const Color(0xFF73BFFF),
-              unselectedLabelColor: Colors.white54,
-              indicatorColor: const Color(0xFF73BFFF),
-              indicatorWeight: 2.5,
-              labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
-              tabs: const [
-                Tab(text: 'SUMÁRIO'),
-                Tab(text: 'ODDS'),
-                Tab(text: 'CLASSIFICAÇÕES'),
-                Tab(text: 'RESULTADOS'),
-                Tab(text: 'CALENDÁRIO'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: [
-                _summaryTab(matches, cs),
-                _oddsTab(cs),
-                _standingsTab(cs),
-                _resultsTab(cs),
-                _calendarTab(cs),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryTab(List<LiveMatch> matches, ColorScheme cs) {
-    final live = matches.where((m) => m.isLive).toList();
-    final upcoming = matches.where((m) => m.isScheduled).take(12).toList();
-    return RefreshIndicator(
-      onRefresh: () async {
-        setState(() {
-          fixturesLoaded = false;
-          fixtures = [];
-        });
-        await _loadFixtures();
-      },
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 24),
-        children: [
-          _filterBar(),
-          const SizedBox(height: 8),
-          if (live.isNotEmpty) _sectionTitle('Ao vivo', Colors.red),
-          ...live.map((m) => _leagueMatchTile(m, cs)),
-          if (upcoming.isNotEmpty) _sectionTitle('Próximos jogos', const Color(0xFF73BFFF)),
-          ...upcoming.map((m) => _leagueMatchTile(m, cs)),
-          if (live.isEmpty && upcoming.isEmpty && loadingFixtures)
-            const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator())),
-          if (live.isEmpty && upcoming.isEmpty && !loadingFixtures)
-            const Padding(padding: EdgeInsets.all(28), child: Center(child: Text('Sem partidas para exibir.', style: TextStyle(color: Colors.white54)))),
-          const SizedBox(height: 14),
-          _sectionTitle('Classificações', const Color(0xFF73BFFF)),
-          _standingsPreview(cs),
-        ],
-      ),
-    );
-  }
-
-  Widget _standingsPreview(ColorScheme cs) {
-    if (standings.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
-        child: Text(loadingStandings ? 'Carregando classificação...' : 'Classificação não disponível.', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-      );
-    }
-    final rows = standings.take(6).map((raw) {
-      final item = _asMap(raw) ?? {};
-      final team = _asMap(item['team']) ?? {};
-      final rank = item['rank'] ?? '';
-      final points = item['points'] ?? item['pts'] ?? '-';
-      return '${_safeString(team['name'], 'Time')}  •  ${item['played'] ?? _asMap(item['all'])?['played'] ?? '-'}J  •  $points pts';
-    }).toList();
-    return Column(
-      children: rows.asMap().entries.map((entry) {
-        final index = entry.key;
-        final value = entry.value;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 22,
-                child: Text(
-                  '${index + 1}.',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 10,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _filterBar() {
-    const filters = ['Todos', 'Ao vivo', 'Finalizados', 'Próximos'];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: filters.map((value) {
-          final selected = filter == value;
-          return Padding(
-            padding: const EdgeInsets.only(right: 7),
-            child: ChoiceChip(
-              label: Text(value),
-              selected: selected,
-              onSelected: (_) => setState(() => filter = value),
-              labelStyle: TextStyle(color: selected ? Colors.white : Colors.white70, fontSize: 11, fontWeight: FontWeight.w800),
-              selectedColor: const Color(0xFF0C5A83),
-              backgroundColor: const Color(0xFF10232D),
-              side: BorderSide(color: selected ? const Color(0xFF73BFFF) : Colors.white12),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _sectionTitle(String title, Color color) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
-      child: Row(
-        children: [
-          Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 7),
-          Text(title, style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w900)),
-        ],
-      ),
-    );
-  }
-
-  Widget _leagueMatchTile(LiveMatch match, ColorScheme cs) {
-    return MatchCard(
-      compact: true,
-      match: match,
-      favorite: false,
-      api: widget.api,
-      onFavorite: () {},
-      onHomeTeamTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailsPage(api: widget.api, team: match.home, season: match.leagueSeason))),
-      onAwayTeamTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailsPage(api: widget.api, team: match.away, season: match.leagueSeason))),
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => MatchDetailsPage(
-            match: match,
-            api: widget.api,
-            favorites: <int>{},
-            onToggleFavorite: (_) async {},
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _matchesTab(List<LiveMatch> list, ColorScheme cs, String emptyText) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 24),
-      children: [
-        _filterBar(),
-        const SizedBox(height: 8),
-        if (list.isEmpty && loadingFixtures) const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator())),
-        if (list.isEmpty && !loadingFixtures) Padding(padding: const EdgeInsets.all(28), child: Center(child: Text(emptyText, style: const TextStyle(color: Colors.white54)))),
-        ...list.map((m) => _leagueMatchTile(m, cs)),
-      ],
-    );
-  }
-
-  Widget _standingsTab(ColorScheme cs) {
-    final filters = ['Ao vivo', 'Geral', 'Artilheiros', 'Casa', 'Fora', 'Forma'];
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 3),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: filters.map((value) {
-                final selected = standingsFilter == value;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(value),
-                    selected: selected,
-                    onSelected: (_) => setState(() => standingsFilter = value),
-                    labelStyle: TextStyle(color: selected ? Colors.white : Colors.white70, fontSize: 12, fontWeight: FontWeight.w900),
-                    selectedColor: const Color(0xFF0C5A83),
-                    backgroundColor: const Color(0xFF10232D),
-                    side: BorderSide(color: selected ? const Color(0xFF73BFFF) : Colors.white12),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-        Expanded(child: _standingsContent(cs)),
-      ],
-    );
-  }
-
-  Widget _standingsContent(ColorScheme cs) {
-    if (standingsFilter == 'Artilheiros') return _topScorersTab(cs);
-    if (loadingStandings) return const Center(child: CircularProgressIndicator());
-    if (standings.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(28), child: Text('Classificação não disponível para esta competição.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))));
-    }
-
-    final liveTeamIds = <int>{};
-    if (standingsFilter == 'Ao vivo') {
-      for (final m in parsedFixtures.where((m) => m.isLive)) {
-        liveTeamIds.add(m.home.id);
-        liveTeamIds.add(m.away.id);
-      }
-    }
-
-    final rows = standings.where((raw) {
-      final item = _asMap(raw) ?? {};
-      final team = _asMap(item['team']) ?? {};
-      final teamId = _localId(_safeString(team['id']));
-      if (standingsFilter == 'Ao vivo') return liveTeamIds.contains(teamId);
-      return true;
-    }).toList();
-
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(8, 5, 8, 24),
-      itemCount: rows.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 4, 7),
-            child: Row(children: [
-              const SizedBox(width: 25),
-              const Expanded(child: Text('EQUIPE', style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w900))),
-              _standingsCell('J', 'J'),
-              _standingsCell('G', 'G'),
-              _standingsCell('P', 'P', strong: true),
-            ]),
-          );
-        }
-        final item = _asMap(rows[index - 1]) ?? {};
-        final team = _asMap(item['team']) ?? {};
-        final rank = item['rank'] ?? index;
-        final points = item['points'] ?? item['pts'] ?? '-';
-        final all = _asMap(item['all']) ?? {};
-        final home = _asMap(item['home']) ?? {};
-        final away = _asMap(item['away']) ?? {};
-        final source = standingsFilter == 'Casa' ? home : standingsFilter == 'Fora' ? away : all;
-        final played = source['played'] ?? item['played'] ?? '-';
-        final wins = source['win'] ?? source['wins'] ?? item['wins'] ?? '-';
-        final draws = source['draw'] ?? source['draws'] ?? item['draws'] ?? '-';
-        final losses = source['lose'] ?? source['losses'] ?? item['losses'] ?? '-';
-        final goalsMap = _asMap(source['goals']);
-        final goalsFor = goalsMap?['for'] ?? source['goalsFor'];
-        final goalsAgainst = goalsMap?['against'] ?? source['goalsAgainst'];
-        final formValue = source['form'] ?? item['form'] ?? item['recentForm'] ?? item['formString'];
-        final form = formValue?.toString() ?? '';
-        final logo = team['logo']?.toString();
-        return Container(
-          margin: const EdgeInsets.only(bottom: 5),
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
-          decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)),
-          child: Row(children: [
-            SizedBox(width: 25, child: Text('$rank', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 10))),
-            if (logo != null && logo.isNotEmpty) ...[ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.network(logo, width: 22, height: 22, fit: BoxFit.contain)), const SizedBox(width: 7)] else const SizedBox(width: 29),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_safeString(team['name'], 'Time'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-              if (standingsFilter == 'Forma' && form.isNotEmpty) Text(form, style: const TextStyle(color: Colors.white54, fontSize: 10.5, fontWeight: FontWeight.w800)),
-              if ((standingsFilter == 'Casa' || standingsFilter == 'Fora') && (goalsFor != null || goalsAgainst != null)) Text('$goalsFor:$goalsAgainst', style: const TextStyle(color: Colors.white54, fontSize: 10.5, fontWeight: FontWeight.w800)),
-            ])),
-            _standingsCell('J', played),
-            _standingsCell('G', wins),
-            _standingsCell('P', standingsFilter == 'Geral' || standingsFilter == 'Forma' || standingsFilter == 'Ao vivo' ? points : (source['points'] ?? points), strong: true),
-            if (standingsFilter == 'Geral' || standingsFilter == 'Forma' || standingsFilter == 'Ao vivo') _standingsCell('E/D', '$draws/$losses'),
-          ]),
-        );
-      },
-    );
-  }
-
-  Widget _topScorersTab(ColorScheme cs) {
-    if (loadingTopScorers) return const Center(child: CircularProgressIndicator());
-    if (topScorers.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(28), child: Text('Artilheiros não disponíveis para esta competição.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
-      itemCount: topScorers.length,
-      itemBuilder: (context, index) {
-        final item = _asMap(topScorers[index]) ?? {};
-        final player = _asMap(item['player']) ?? {};
-        final stats = _asMap(item['statistics'] is List && (item['statistics'] as List).isNotEmpty ? (item['statistics'] as List).first : item['statistics']) ?? {};
-        final goals = _asMap(stats['goals']) ?? {};
-        final games = _asMap(stats['games']) ?? {};
-        return Container(
-          margin: const EdgeInsets.only(bottom: 5),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)),
-          child: Row(children: [
-            SizedBox(width: 28, child: Text('${index + 1}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900))),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_safeString(player['name'], 'Jogador'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
-              if (games['appearances'] != null || games['appearences'] != null) Text('Jogos: ${games['appearances'] ?? games['appearences']}', style: const TextStyle(color: Colors.white54, fontSize: 8)),
-            ])),
-            Text('${goals['total'] ?? item['goals'] ?? 0}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-            const SizedBox(width: 4),
-            const Text('gols', style: TextStyle(color: Colors.white54, fontSize: 9)),
-          ]),
-        );
-      },
-    );
-  }
-
-  String _resultDate(LiveMatch match) {
-    final date = match.startTime;
-    if (date == null) return '--.--';
-    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.';
-  }
-
-  String _resultOddLabel(LiveMatch match, String side) {
-    // A estrutura de odds varia conforme a casa/mercado retornado pela API.
-    // Procuramos recursivamente por valores associados à partida e aceitamos
-    // os formatos mais comuns: 1/X/2, home/draw/away e value/odd.
-    final fixtureId = match.apiId.trim();
-    for (final raw in odds) {
-      final root = _asMap(raw);
-      if (root == null) continue;
-      if (fixtureId.isNotEmpty && !_containsFixtureId(root, fixtureId)) continue;
-      final value = _findOddValue(root, side);
-      if (value != null && value.trim().isNotEmpty) return value.trim();
-    }
-    return '-';
-  }
-
-  bool _containsFixtureId(dynamic value, String fixtureId) {
-    if (value is Map) {
-      for (final entry in value.entries) {
-        final key = entry.key.toString().toLowerCase();
-        final item = entry.value;
-        if ((key == 'fixture' || key == 'fixtureid' || key == 'fixture_id' || key == 'match' || key == 'matchid' || key == 'match_id' || key == 'event') && item != null) {
-          if (item.toString() == fixtureId) return true;
-          final map = _asMap(item);
-          if (map != null && (map['id']?.toString() == fixtureId || map['fixture']?.toString() == fixtureId)) return true;
-        }
-        if (_containsFixtureId(item, fixtureId)) return true;
-      }
-    } else if (value is List) {
-      for (final item in value) {
-        if (_containsFixtureId(item, fixtureId)) return true;
-      }
-    }
-    return false;
-  }
-
-  String? _findOddValue(dynamic value, String side) {
-    final wanted = side == 'home'
-        ? const {'home', '1', 'team1', 'homewin'}
-        : side == 'away'
-            ? const {'away', '2', 'team2', 'awaywin'}
-            : const {'draw', 'x', 'tie'};
-
-    if (value is Map) {
-      final direct = value['odd'] ?? value['price'];
-      final valueLabel = value['value']?.toString().toLowerCase().trim();
-      if (direct != null && valueLabel != null && wanted.contains(valueLabel)) {
-        return direct.toString();
-      }
-
-      for (final entry in value.entries) {
-        final key = entry.key.toString().toLowerCase().replaceAll('_', '').replaceAll('-', '');
-        if (wanted.contains(key)) {
-          final nested = _asMap(entry.value);
-          if (nested != null) {
-            final odd = nested['odd'] ?? nested['price'] ?? nested['value'];
-            if (odd != null) return odd.toString();
-          } else if (entry.value != null) {
-            return entry.value.toString();
-          }
-        }
-      }
-
-      for (final entry in value.entries) {
-        final found = _findOddValue(entry.value, side);
-        if (found != null) return found;
-      }
-    } else if (value is List) {
-      for (final item in value) {
-        final found = _findOddValue(item, side);
-        if (found != null) return found;
-      }
-    }
-    return null;
-  }
-
-  Widget _resultOdd(String value, {bool highlight = false}) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 45),
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-      decoration: BoxDecoration(
-        color: highlight ? const Color(0xFF183E50) : Colors.transparent,
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        value,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: highlight ? Colors.white : Colors.white70,
-          fontSize: 10,
-          fontWeight: highlight ? FontWeight.w900 : FontWeight.w700,
-        ),
-      ),
-    );
-  }
-
-  Widget _resultMatchRow(LiveMatch match, ColorScheme cs) {
-    final homeOdd = _resultOddLabel(match, 'home');
-    final drawOdd = _resultOddLabel(match, 'draw');
-    final awayOdd = _resultOddLabel(match, 'away');
-    final homeScore = match.homeScore?.toString() ?? '-';
-    final awayScore = match.awayScore?.toString() ?? '-';
-    final homeWon = (match.homeScore ?? -1) > (match.awayScore ?? -1);
-    final awayWon = (match.awayScore ?? -1) > (match.homeScore ?? -1);
-
-    return Material(
-      color: cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => MatchDetailsPage(
-              match: match,
-              api: widget.api,
-              favorites: <int>{},
-              onToggleFavorite: (_) async {},
-            ),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(9, 9, 8, 9),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 46,
-                child: Text(
-                  _resultDate(match),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w900),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        ClubShield(team: match.home, size: 18),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            match.home.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 14, fontWeight: homeWon ? FontWeight.w900 : FontWeight.w700),
-                          ),
-                        ),
-                        Text(homeScore, style: TextStyle(fontSize: 14, fontWeight: homeWon ? FontWeight.w900 : FontWeight.w700)),
-                        const SizedBox(width: 5),
-                        _resultOdd(homeOdd, highlight: homeWon),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        const SizedBox(width: 24),
-                        Expanded(
-                          child: Text(
-                            match.away.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 14, fontWeight: awayWon ? FontWeight.w900 : FontWeight.w700),
-                          ),
-                        ),
-                        Text(awayScore, style: TextStyle(fontSize: 14, fontWeight: awayWon ? FontWeight.w900 : FontWeight.w700)),
-                        const SizedBox(width: 5),
-                        _resultOdd(awayOdd, highlight: awayWon),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        const Text('X', style: TextStyle(color: Colors.white30, fontSize: 8, fontWeight: FontWeight.w900)),
-                        const SizedBox(width: 4),
-                        _resultOdd(drawOdd),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _resultsTab(ColorScheme cs) {
-    final groups = _resultGroups();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
-      children: [
-        if (groups.isEmpty && loadingFixtures)
-          const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator())),
-        if (groups.isEmpty && !loadingFixtures)
-          const Padding(padding: EdgeInsets.all(28), child: Center(child: Text('Nenhum resultado encontrado para esta liga.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54)))),
-        for (final entry in groups.entries) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(5, 14, 5, 9),
-            child: Row(
-              children: [
-                const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF73BFFF)),
-                const SizedBox(width: 6),
-                Text(entry.key, style: const TextStyle(color: Color(0xFF73BFFF), fontSize: 15, fontWeight: FontWeight.w900)),
-              ],
-            ),
-          ),
-          ...entry.value.map((match) => Padding(
-                padding: const EdgeInsets.only(bottom: 5),
-                child: _resultMatchRow(match, cs),
-              )),
-        ],
-      ],
-    );
-  }
-
-  Widget _calendarTab(ColorScheme cs) {
-    final groups = _calendarGroups();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 24),
-      children: [
-        _filterBar(),
-        const SizedBox(height: 8),
-        if (groups.isEmpty && loadingFixtures) const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator())),
-        if (groups.isEmpty && !loadingFixtures) const Padding(padding: EdgeInsets.all(28), child: Center(child: Text('Nenhum jogo no calendário encontrado.', style: TextStyle(color: Colors.white54)))),
-        for (final entry in groups.entries) ...[
-          Padding(padding: const EdgeInsets.fromLTRB(4, 9, 4, 7), child: Row(children: [const Icon(Icons.calendar_month, size: 16, color: Color(0xFF73BFFF)), const SizedBox(width: 6), Text(entry.key, style: const TextStyle(color: Color(0xFF73BFFF), fontSize: 15, fontWeight: FontWeight.w900))])),
-          ...entry.value.map((m) => _calendarMatchTile(m, cs)),
-        ],
-      ],
-    );
-  }
-
-  Widget _calendarMatchTile(LiveMatch match, ColorScheme cs) {
-    final date = match.startTime;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 5),
-      decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MatchDetailsPage(match: match, api: widget.api, favorites: <int>{}, onToggleFavorite: (_) async {}))),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-          child: Row(children: [
-            SizedBox(width: 58, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(date == null ? '--.--' : '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
-              Text(date == null ? '--:--' : _formatTime(date), style: const TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.w800)),
-            ])),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [ClubShield(team: match.home, size: 18), const SizedBox(width: 6), Expanded(child: Text(match.home.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)))]),
-              const SizedBox(height: 4),
-              Row(children: [ClubShield(team: match.away, size: 18), const SizedBox(width: 6), Expanded(child: Text(match.away.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)))]),
-            ])),
-            SizedBox(width: 46, child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text('-', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w900)), const SizedBox(height: 4), Text('-', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w900))])),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _standingsCell(String label, dynamic value, {bool strong = false}) {
-    return SizedBox(width: 27, child: Column(children: [Text(label, style: const TextStyle(color: Colors.white38, fontSize: 7, fontWeight: FontWeight.w800)), const SizedBox(height: 2), Text('$value', style: TextStyle(fontSize: 9, fontWeight: strong ? FontWeight.w900 : FontWeight.w700))]));
-  }
-
-  Widget _oddsTab(ColorScheme cs) {
-    if (loadingOdds) return const Center(child: CircularProgressIndicator());
-    if (odds.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(28), child: Text('Odds não disponíveis para esta competição no plano atual da API.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(10),
-      itemCount: odds.length,
-      itemBuilder: (context, index) {
-        final item = _asMap(odds[index]) ?? {};
-        final bookmaker = _asMap(item['bookmaker']) ?? {};
-        final betType = _asMap(item['betType']) ?? _asMap(item['bet']) ?? {};
-        final values = _asList(item['values'] ?? item['odds']);
-        return Container(
-          margin: const EdgeInsets.only(bottom: 7),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_safeString(bookmaker['name'], 'Casa de apostas'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
-            const SizedBox(height: 3),
-            Text(_safeString(betType['name'], 'Mercado'), style: const TextStyle(color: Colors.white54, fontSize: 9)),
-            const SizedBox(height: 7),
-            Wrap(spacing: 6, runSpacing: 5, children: values.map((v) { final m = _asMap(v) ?? {}; return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF0A3142), borderRadius: BorderRadius.circular(7)), child: Text('${_safeString(m['value'], 'Opção')}  ${_safeString(m['odd'], '-')} ', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800))); }).toList()),
-          ]),
-        );
-      },
-    );
-  }
-}
-
-// ============================================================
-// GOLS HOJE
-// ============================================================
-
-class GoalsTodayPage extends StatelessWidget {
-  final List<LiveMatch> matches;
-  final Set<String> favoriteLeagues;
-  final Set<int> favorites;
-  final Set<int> favoriteMatches;
-  final int selectedGoals;
-  final ValueChanged<int> onSelectedGoalsChanged;
-  final String matchOrder;
-  final Future<void> Function(int teamId) onToggleFavorite;
-  final Future<void> Function(int matchId) onToggleFavoriteMatch;
-  final void Function(LiveMatch match) onOpenMatch;
-
-  const GoalsTodayPage({
-    super.key,
-    required this.matches,
-    required this.favoriteLeagues,
-    required this.favorites,
-    required this.favoriteMatches,
-    required this.selectedGoals,
-    required this.onSelectedGoalsChanged,
-    required this.matchOrder,
-    required this.onToggleFavorite,
-    required this.onToggleFavoriteMatch,
-    required this.onOpenMatch,
-  });
-
-  int _totalGoals(LiveMatch match) {
-    final home = match.homeScore;
-    final away = match.awayScore;
-    if (home == null || away == null) return -1;
-    return home + away;
-  }
-
-  List<LiveMatch> get filteredMatches {
-    if (favoriteLeagues.isEmpty) return const [];
-
-    final list = matches.where((match) {
-      if (!favoriteLeagues.contains(match.league)) return false;
-      final total = _totalGoals(match);
-      if (total < 0) return false;
-      return selectedGoals == 6 ? total >= 6 : total == selectedGoals;
-    }).toList();
-
-    list.sort((a, b) {
-      if (a.isLive != b.isLive) return a.isLive ? -1 : 1;
-      if (a.isFinished != b.isFinished) return a.isFinished ? 1 : -1;
-      return (a.startTime?.millisecondsSinceEpoch ?? 0)
-          .compareTo(b.startTime?.millisecondsSinceEpoch ?? 0);
-    });
-    return list;
-  }
-
-  String _goalLabel(int value) {
-    if (value == 0) return '0 - gols';
-    if (value == 1) return '1 - gol';
-    if (value == 6) return '6+ - gols';
-    return '$value - gols';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final list = filteredMatches;
-
-    return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Container(
-              height: 58,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface),
-              child: Row(
-                children: [
-                  const Icon(Icons.filter_alt, color: Colors.red, size: 24),
-                  const SizedBox(width: 9),
-                  const Text('Gols Hoje', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const Spacer(),
-                  Text(_goalLabel(selectedGoals), style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700)),
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 9, 10, 5),
-              child: Row(
-                children: [
-                  const Icon(Icons.star, color: Colors.amber, size: 16),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      favoriteLeagues.isEmpty
-                          ? 'Marque suas competições favoritas em Ligas.'
-                          : 'Filtro em ${favoriteLeagues.length} competição(ões) favorita(s)',
-                      style: const TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  Text('${list.length}', style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w900)),
-                ],
-              ),
-            ),
-          ),
-          if (favoriteLeagues.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Padding(
-                  padding: EdgeInsets.all(28),
-                  child: Text(
-                    'Você ainda não selecionou competições favoritas.\n\nEntre em Ligas e marque as competições com ★.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white60, fontSize: 16, height: 1.4),
-                  ),
-                ),
-              ),
-            )
-          else if (list.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Text(
-                    'Nenhum jogo encontrado com ${_goalLabel(selectedGoals)} nas suas competições favoritas.',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white60, fontSize: 16, height: 1.4),
-                  ),
-                ),
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final match = list[index];
-                  return _FlashMatchRow(
-                    match: match,
-                    favorite: favoriteMatches.contains(match.id),
-                    onFavorite: () => onToggleFavorite(match.home.id),
-                    onMatchFavorite: () => onToggleFavoriteMatch(match.id),
-                    onTap: () => onOpenMatch(match),
-                  );
-                },
-                childCount: list.length,
-              ),
-            ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// FAVORITES
-// ============================================================
-
-class FavoritesPage extends StatelessWidget {
-  final List<LiveMatch> matches;
-  final Set<int> favorites;
-  final Set<int> favoriteMatches;
-  final Future<void> Function(int teamId) onToggleFavorite;
-  final Future<void> Function(int matchId) onToggleFavoriteMatch;
-  final void Function(LiveMatch match) onOpenMatch;
-
-  const FavoritesPage({
-    super.key,
-    required this.matches,
-    required this.favorites,
-    required this.favoriteMatches,
-    required this.onToggleFavorite,
-    required this.onToggleFavoriteMatch,
-    required this.onOpenMatch,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final favoriteGameMatches = matches.where((match) {
-      return favoriteMatches.contains(match.id) ||
-          favorites.contains(match.home.id) ||
-          favorites.contains(match.away.id);
-    }).toList();
-
-    favoriteGameMatches.sort((a, b) {
-      if (a.isLive != b.isLive) return a.isLive ? -1 : 1;
-      if (a.isFinished != b.isFinished) return a.isFinished ? 1 : -1;
-      return (a.startTime?.millisecondsSinceEpoch ?? 0)
-          .compareTo(b.startTime?.millisecondsSinceEpoch ?? 0);
-    });
-
-    return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
-              child: Text(
-                'Favoritos',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
-              ),
-            ),
-          ),
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Text(
-                'Aqui aparecem jogos marcados com ★ e jogos dos seus times favoritos.',
-                style: TextStyle(color: Colors.white54, fontSize: 14),
-              ),
-            ),
-          ),
-          if (favoriteGameMatches.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Padding(
-                  padding: EdgeInsets.all(30),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.star_border, size: 64, color: Colors.white24),
-                      SizedBox(height: 14),
-                      Text('Nenhum favorito', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 6),
-                      Text(
-                        'Marque um jogo com ★ ou favorite um time nos detalhes da partida.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final match = favoriteGameMatches[index];
-                  return MatchCard(
-                    match: match,
-                    favorite: favoriteMatches.contains(match.id),
-                    onFavorite: () => onToggleFavoriteMatch(match.id),
-                    onTap: () => onOpenMatch(match),
-                  );
-                },
-                childCount: favoriteGameMatches.length,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class CompetitionsPage extends StatelessWidget {
-  final List<LiveMatch> matches;
-  final Set<String> favoriteLeagues;
-  final Future<void> Function(String league) onToggleFavoriteLeague;
-  final void Function(LiveMatch match) onOpenMatch;
-
-  const CompetitionsPage({
-    super.key,
-    required this.matches,
-    required this.favoriteLeagues,
-    required this.onToggleFavoriteLeague,
-    required this.onOpenMatch,
-  });
-
-  static const List<Map<String, String>> mainLeagues = [
-    {'country': 'EUROPA', 'name': 'Champions League'},
-    {'country': 'EUROPA', 'name': 'Europa League'},
-    {'country': 'EUROPA', 'name': 'Conference League'},
-    {'country': 'EUROPA', 'name': 'Super Cup'},
-    {'country': 'INGLATERRA', 'name': 'Premier League'},
-    {'country': 'INGLATERRA', 'name': 'Championship'},
-    {'country': 'ESPANHA', 'name': 'LaLiga'},
-    {'country': 'ESPANHA', 'name': 'LaLiga 2'},
-    {'country': 'ITÁLIA', 'name': 'Serie A'},
-    {'country': 'ITÁLIA', 'name': 'Serie B'},
-    {'country': 'ALEMANHA', 'name': 'Bundesliga'},
-    {'country': 'ALEMANHA', 'name': '2. Bundesliga'},
-    {'country': 'FRANÇA', 'name': 'Ligue 1'},
-    {'country': 'FRANÇA', 'name': 'Ligue 2'},
-    {'country': 'PORTUGAL', 'name': 'Primeira Liga'},
-    {'country': 'HOLANDA', 'name': 'Eredivisie'},
-    {'country': 'BÉLGICA', 'name': 'Pro League'},
-    {'country': 'TURQUIA', 'name': 'Süper Lig'},
-    {'country': 'ESCÓCIA', 'name': 'Premiership'},
-    {'country': 'ÁUSTRIA', 'name': 'Bundesliga'},
-    {'country': 'SUÍÇA', 'name': 'Super League'},
-    {'country': 'DINAMARCA', 'name': 'Superliga'},
-    {'country': 'NORUEGA', 'name': 'Eliteserien'},
-    {'country': 'SUÉCIA', 'name': 'Allsvenskan'},
-    {'country': 'POLÔNIA', 'name': 'Ekstraklasa'},
-    {'country': 'REP. TCHECA', 'name': 'First League'},
-    {'country': 'GRÉCIA', 'name': 'Super League'},
-    {'country': 'CROÁCIA', 'name': 'HNL'},
-    {'country': 'SÉRVIA', 'name': 'SuperLiga'},
-    {'country': 'ROMÊNIA', 'name': 'Liga I'},
-    {'country': 'UCRÂNIA', 'name': 'Premier League'},
-    {'country': 'RÚSSIA', 'name': 'Premier League'},
-    {'country': 'EUA', 'name': 'MLS'},
-    {'country': 'MÉXICO', 'name': 'Liga MX'},
-    {'country': 'BRASIL', 'name': 'Brasileirão'},
-    {'country': 'BRASIL', 'name': 'Brasileirão Série B'},
-    {'country': 'ARGENTINA', 'name': 'Liga Profesional'},
-    {'country': 'AMÉRICA DO SUL', 'name': 'Libertadores'},
-    {'country': 'AMÉRICA DO SUL', 'name': 'Copa Sudamericana'},
-  ];
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(18, 18, 18, 6),
-              child: Text('Ligas', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
-            ),
-          ),
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(18, 0, 18, 12),
-              child: Text('Principais competições', style: TextStyle(color: Colors.white54)),
-            ),
-          ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final league = mainLeagues[index];
-                final name = league['name']!;
-                final country = league['country']!;
-                final selected = favoriteLeagues.contains(name);
-                final games = matches.where((m) => m.league == name).toList();
-
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: ListTile(
-                    dense: true,
-                    leading: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainer,
-                        borderRadius: BorderRadius.circular(7),
-                      ),
-                      child: const Icon(Icons.emoji_events_outlined, color: Colors.white70),
-                    ),
-                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Text(
-                      games.isEmpty ? country : '$country  •  ${games.length} jogo(s) hoje',
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                    trailing: IconButton(
-                      tooltip: selected ? 'Remover dos favoritos' : 'Adicionar aos favoritos',
-                      onPressed: () => onToggleFavoriteLeague(name),
-                      icon: Icon(
-                        selected ? Icons.star : Icons.star_border,
-                        color: selected ? Colors.amber : Colors.white54,
-                      ),
-                    ),
-                  ),
-                );
-              },
-              childCount: mainLeagues.length,
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 30)),
-        ],
-      ),
-    );
-  }
-}
-
-class _CompetitionCard
-    extends StatelessWidget {
-  final String league;
-  final List<LiveMatch> matches;
-
-  final void Function(LiveMatch match)
-      onOpenMatch;
-
-  const _CompetitionCard({
-    required this.league,
-    required this.matches,
-    required this.onOpenMatch,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 9,
-        vertical: 7,
-      ),
-      child: Card(
-        color:
-            const Color(0xFF10231A),
-        child: ExpansionTile(
-          leading: Container(
-            width: 42,
-            height: 42,
-            decoration:
-                BoxDecoration(
-              color:
-                  const Color(
-                0xFF18C96E,
-              ).withOpacity(.12),
-              shape:
-                  BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.emoji_events,
-              color:
-                  Color(0xFF18C96E),
-            ),
-          ),
-          title: Text(
-            league,
-            style:
-                const TextStyle(
-              fontWeight:
-                  FontWeight.bold,
-            ),
-          ),
-          subtitle: Text(
-            '${matches.length} jogo(s)',
-            style:
-                const TextStyle(
-              color:
-                  Colors.white54,
-            ),
-          ),
-          children: matches
-              .map(
-                (match) => InkWell(
-                  onTap: () =>
-                      onOpenMatch(
-                    match,
-                  ),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets
-                            .fromLTRB(
-                      16,
-                      8,
-                      16,
-                      12,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            match.home.name,
-                            textAlign:
-                                TextAlign.end,
-                          ),
-                        ),
-                        const Padding(
-                          padding:
-                              EdgeInsets
-                                  .symmetric(
-                            horizontal:
-                                10,
-                          ),
-                          child: Text(
-                            'x',
-                            style:
-                                TextStyle(
-                              color:
-                                  Colors.white54,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            match.away.name,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-      ),
-    );
-  }
-}
-
-class _GoalPopupMenu extends StatelessWidget {
-  final int selectedGoals;
-  final ValueChanged<int> onSelect;
-  final VoidCallback onClose;
-
-  const _GoalPopupMenu({
-    required this.selectedGoals,
-    required this.onSelect,
-    required this.onClose,
-  });
-
-  String _label(int value) {
-    if (value == 0) return '0 - gols';
-    if (value == 1) return '1 - gol';
-    if (value == 6) return '6+ - gols';
-    return '$value - gols';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0A1A23),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white12),
-          boxShadow: const [BoxShadow(blurRadius: 18, spreadRadius: 1, offset: Offset(0, 5), color: Colors.black54)],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 5, 8, 4),
-              child: Row(
-                children: [
-                  const Expanded(child: Text('Gols Hoje', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900))),
-                  InkWell(onTap: onClose, child: const Icon(Icons.close, size: 17, color: Colors.white38)),
-                ],
-              ),
-            ),
-            ...List.generate(7, (i) => InkWell(
-                  onTap: () => onSelect(i),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    color: selectedGoals == i ? Colors.red.withOpacity(.16) : Colors.transparent,
-                    child: Row(
-                      children: [
-                        Icon(selectedGoals == i ? Icons.radio_button_checked : Icons.radio_button_off, size: 15, color: selectedGoals == i ? Colors.red : Colors.white38),
-                        const SizedBox(width: 8),
-                        Text(_label(i), style: TextStyle(color: selectedGoals == i ? Colors.white : Colors.white70, fontSize: 12, fontWeight: selectedGoals == i ? FontWeight.w900 : FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                )),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================
-// MATCH CARD
-// ============================================================
-
-class _LiveClock extends StatefulWidget {
-  final LiveMatch match;
-  const _LiveClock({required this.match});
-
-  @override
-  State<_LiveClock> createState() => _LiveClockState();
-}
-
-class _LiveClockState extends State<_LiveClock> {
-  Timer? _timer;
-  int seconds = 0;
-  int baseMinute = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    baseMinute = widget.match.minute ?? 0;
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => seconds = (seconds + 1) % 60);
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _LiveClock oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.match.minute != oldWidget.match.minute && widget.match.minute != null) {
-      baseMinute = widget.match.minute!;
-      seconds = 0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final totalMinutes = baseMinute + (seconds >= 60 ? 1 : 0);
-    final displaySeconds = seconds.toString().padLeft(2, '0');
-    return Text(
-      '${totalMinutes.toString().padLeft(2, '0')}:$displaySeconds',
-      style: const TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.w900),
-    );
-  }
-}
-
-List<int> _goalMinutesForTeam(LiveMatch match, TeamInfo team) {
-  final result = <int>[];
-  for (final event in match.events) {
-    if (event.type != 'goal' || event.minute <= 0) continue;
-    final sameId = event.teamId != null && event.teamId == team.id;
-    final sameName = event.team != null && event.team!.trim().toLowerCase() == team.name.trim().toLowerCase();
-    if (sameId || sameName) result.add(event.minute);
-  }
-  result.sort();
-  return result;
-}
-
-class MatchCard extends StatelessWidget {
-  final LiveMatch match;
-  final bool compact;
-  final bool favorite;
-  final VoidCallback onFavorite;
-  final VoidCallback onTap;
-  final bool favoriteHome;
-  final bool favoriteAway;
-  final VoidCallback? onFavoriteHome;
-  final VoidCallback? onFavoriteAway;
-  final KickoffApiService? api;
-  final VoidCallback? onHomeTeamTap;
-  final VoidCallback? onAwayTeamTap;
-
-  const MatchCard({
-    super.key,
-    required this.match,
-    this.compact = false,
-    required this.favorite,
-    required this.onFavorite,
-    required this.onTap,
-    this.favoriteHome = false,
-    this.favoriteAway = false,
-    this.onFavoriteHome,
-    this.onFavoriteAway,
-    this.api,
-    this.onHomeTeamTap,
-    this.onAwayTeamTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final live = match.isLive;
-    final scoreColor = live
-        ? Colors.red
-        : match.isFinished
-            ? cs.onSurface
-            : cs.onSurfaceVariant;
-
-    if (compact) {
-      return Material(
-        color: cs.surface,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Column(
-              children: [
-                _compactTeamRow(
-                  context: context,
-                  team: match.home,
-                  score: match.homeScore,
-                  scoreColor: scoreColor,
-                  live: live,
-                  home: true,
-                ),
-                _compactTeamRow(
-                  context: context,
-                  team: match.away,
-                  score: match.awayScore,
-                  scoreColor: scoreColor,
-                  live: live,
-                  home: false,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Material(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: Text(match.league, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12))),
-                    Text(match.isLive ? (match.minute != null ? "${match.minute}'" : 'AO VIVO') : _statusLabel(match), style: TextStyle(color: live ? Colors.red : cs.onSurfaceVariant, fontSize: 11, fontWeight: FontWeight.bold)),
-                    IconButton(visualDensity: VisualDensity.compact, onPressed: onFavorite, icon: Icon(favorite ? Icons.star : Icons.star_border, color: favorite ? Colors.amber : cs.onSurfaceVariant)),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Row(
-                  children: [
-                    Expanded(child: _TeamColumn(team: match.home, score: match.homeScore, align: CrossAxisAlignment.end)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Column(
-                        children: [
-                          Text(match.isScheduled ? 'x' : '${match.homeScore ?? 0} - ${match.awayScore ?? 0}', style: TextStyle(color: scoreColor, fontSize: 20, fontWeight: FontWeight.w900)),
-                          if (live) _LiveClock(match: match),
-                          if (match.startTime != null && match.isScheduled) Text(_formatTime(match.startTime!), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11)),
-                        ],
-                      ),
-                    ),
-                    Expanded(child: _TeamColumn(team: match.away, score: match.awayScore, align: CrossAxisAlignment.start)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<MatchEvent> _goalsForTeam(TeamInfo team) {
-    return match.events.where((e) {
-      if (e.type != 'goal') return false;
-      if (e.teamId != null && team.id != 0) return e.teamId == team.id;
-      return e.team != null && e.team!.toLowerCase() == team.name.toLowerCase();
-    }).toList()..sort((a,b) => a.minute.compareTo(b.minute));
-  }
-
-  Widget _goalLabels(TeamInfo team, ColorScheme cs) {
-    final goals = _goalsForTeam(team);
-    if (goals.isEmpty) return const SizedBox.shrink();
-    return Wrap(
-      spacing: 4,
-      runSpacing: 2,
-      children: goals.map((g) => Text('⚽${g.minute}\'', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: cs.onSurfaceVariant))).toList(),
-    );
-  }
-
-  Widget _compactTeamRow({
-    required BuildContext context,
-    required TeamInfo team,
-    required int? score,
-    required Color scoreColor,
-    required bool live,
-    required bool home,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    final isFavorite = home ? favoriteHome : favoriteAway;
-    final callback = home ? (onFavoriteHome ?? onFavorite) : (onFavoriteAway ?? onFavorite);
-    return SizedBox(
-      height: 34,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 28,
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 25, minHeight: 25),
-              visualDensity: VisualDensity.compact,
-              onPressed: callback,
-              icon: Icon(isFavorite ? Icons.star : Icons.star_border, size: 18, color: isFavorite ? Colors.amber : cs.onSurfaceVariant),
-            ),
-          ),
-          InkWell(
-            onTap: home ? onHomeTeamTap : onAwayTeamTap,
-            child: Row(children: [ClubShield(team: team, size: 23), const SizedBox(width: 6),]),
-          ),
-          Expanded(
-            child: InkWell(
-              onTap: home ? onHomeTeamTap : onAwayTeamTap,
-              child: Row(
-                children: [
-                  Flexible(child: Text(team.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: cs.onSurface))),
-                  const SizedBox(width: 4),
-                  Flexible(child: _goalLabels(team, cs)),
-                ],
-              ),
-            ),
-          ),
-          if (live && home) ...[
-            Text(match.minute != null ? "${match.minute}'" : '•', style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w800)),
-            const SizedBox(width: 7),
-          ],
-          SizedBox(
-            width: 26,
-            child: Text(match.isScheduled ? '-' : '${score ?? 0}', textAlign: TextAlign.center, style: TextStyle(color: scoreColor, fontSize: 16, fontWeight: FontWeight.w900)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TeamColumn
-    extends StatelessWidget {
-  final TeamInfo team;
-  final int? score;
-  final CrossAxisAlignment align;
-  final bool compact;
-
-  const _TeamColumn({
-    required this.team,
-    required this.score,
-    required this.align,
-    this.compact = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: align,
-      children: [
-        ClubShield(
-          team: team,
-          size: compact ? 28 : 44,
-        ),
-        SizedBox(height: compact ? 4 : 7),
-        Text(
-          team.name,
-          textAlign:
-              align == CrossAxisAlignment.end
-                  ? TextAlign.end
-                  : TextAlign.start,
-          maxLines: 2,
-          overflow:
-              TextOverflow.ellipsis,
-          style:
-              TextStyle(
-            fontWeight:
-                FontWeight.w700,
-            fontSize: compact ? 11 : 13,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ============================================================
-// CLUB SHIELD
-// ============================================================
-
-class ClubShield extends StatelessWidget {
-  final TeamInfo team;
-  final double size;
-
-  const ClubShield({
-    super.key,
-    required this.team,
-    this.size = 46,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (team.logo == null ||
-        team.logo!.isEmpty) {
-      return Container(
-        width: size,
-        height: size,
-        decoration:
-            BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius:
-              BorderRadius.circular(12),
-        ),
-        child: Icon(
-          Icons.shield,
-          size: size * .55,
-          color:
-              Colors.white54,
-        ),
-      );
-    }
-
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Image.network(
-        team.logo!,
-        fit: BoxFit.contain,
-        errorBuilder:
-            (_, __, ___) {
-          return Container(
-            decoration:
-                BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius:
-                  BorderRadius.circular(
-                12,
-              ),
-            ),
-            child: Icon(
-              Icons.shield,
-              size: size * .55,
-              color:
-                  Colors.white54,
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ============================================================
-// MATCH DETAILS
-// ============================================================
-
-class MatchDetailsPage extends StatefulWidget {
-  final LiveMatch match;
-  final KickoffApiService api;
-  final Set<int> favorites;
-  final Future<void> Function(int teamId) onToggleFavorite;
-
-  const MatchDetailsPage({
-    super.key,
-    required this.match,
-    required this.api,
-    required this.favorites,
-    required this.onToggleFavorite,
-  });
-
-  @override
-  State<MatchDetailsPage> createState() => _MatchDetailsPageState();
-}
-
-class _MatchDetailsPageState extends State<MatchDetailsPage>
-    with SingleTickerProviderStateMixin {
-  late TabController tabs;
-  MatchDetails? details;
-  List<dynamic> h2h = [];
-  bool loading = true;
-  bool h2hLoading = false;
-  String? error;
-
-  @override
-  void initState() {
-    super.initState();
-    tabs = TabController(length: 6, vsync: this);
-    _load();
-  }
-
-  @override
-  void dispose() {
-    tabs.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      loading = true;
-      error = null;
-    });
-    try {
-      final raw = await widget.api.getFixtureDetails(widget.match.apiId);
-      final parsed = _parseDetails(raw);
-      if (!mounted) return;
-      setState(() {
-        details = parsed;
-        loading = false;
-      });
-      _loadH2H(parsed.home.apiId, parsed.away.apiId);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        loading = false;
-        error = e.toString();
-      });
-    }
-  }
-
-  Future<void> _loadH2H(String homeId, String awayId) async {
-    if (homeId.isEmpty || awayId.isEmpty) return;
-    setState(() => h2hLoading = true);
-    try {
-      final result = await widget.api.getHeadToHead(homeId, awayId);
-      if (!mounted) return;
-      setState(() {
-        h2h = result;
-        h2hLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => h2hLoading = false);
-    }
-  }
-
-  bool _isHomeEvent(MatchEvent event, MatchDetails match) {
-    return event.teamId != null && event.teamId == match.home.id;
-  }
-
-  String _periodLabel(MatchEvent event) {
-    if (event.minute <= 45) return '1º TEMPO';
-    return '2º TEMPO';
-  }
-
-  String _eventIcon(MatchEvent event) {
-    switch (event.type) {
-      case 'goal':
-        return '⚽';
-      case 'yellow':
-        return '🟨';
-      case 'red':
-        return '🟥';
-      case 'substitution':
-        return '🔄';
-      default:
-        return '•';
-    }
-  }
-
-  Widget _timelineEvent({
-    required MatchEvent event,
-    required bool home,
-  }) {
-    final minute = event.minute > 0 ? "${event.minute}'" : '';
-    final icon = _eventIcon(event);
-    final detail = event.assist == null || event.assist!.trim().isEmpty
-        ? event.player
-        : '${event.player} (${event.assist})';
-
-    // Sumário no estilo solicitado: todos os eventos alinhados à esquerda.
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 38,
-          child: Text(minute, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-        ),
-        SizedBox(width: 22, child: Text(icon, style: const TextStyle(fontSize: 15))),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Text(
-            detail,
-            textAlign: TextAlign.left,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTimeline(MatchDetails match) {
-    final firstHalf = match.events.where((e) => e.minute <= 45).toList();
-    final secondHalf = match.events.where((e) => e.minute > 45).toList();
-
-    Widget section(String title, List<MatchEvent> events, int? homeScore, int? awayScore) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              border: Border(
-                bottom: BorderSide(
-                  color: Theme.of(context).dividerColor,
-                ),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-                Text(
-                  '${homeScore ?? 0} - ${awayScore ?? 0}',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
-                ),
-              ],
-            ),
-          ),
-          if (events.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Text('Nenhum evento', style: TextStyle(fontSize: 12)),
-            )
-          else
-            ...events.map((event) {
-              final isHome = _isHomeEvent(event, match);
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: .35))),
-                ),
-                child: _timelineEvent(event: event, home: isHome),
-              );
-            }),
-        ],
-      );
-    }
-
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        section('1º TEMPO', firstHalf, firstHalf.isNotEmpty ? match.homeScore : null, firstHalf.isNotEmpty ? match.awayScore : null),
-        section('2º TEMPO', secondHalf, match.homeScore, match.awayScore),
-        _buildOddsPlaceholder(),
-      ],
-    );
-  }
-
-  Widget _buildOddsPlaceholder() {
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('ODDS AO VIVO', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: const [
-                _MiniDetailChip('1X2'),
-                _MiniDetailChip('PRÓXIMO GOL'),
-                _MiniDetailChip('ACIMA/ABAIXO'),
-                _MiniDetailChip('HANDICAP ASIÁTICO'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Divider(height: 1),
-          const SizedBox(height: 8),
-          Text(
-            'Odds ao vivo não disponíveis no plano atual da API.',
-            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final MatchDetails current = details ?? MatchDetails(
-      id: widget.match.id,
-      apiId: widget.match.apiId,
-      home: widget.match.home,
-      away: widget.match.away,
-      homeScore: widget.match.homeScore,
-      awayScore: widget.match.awayScore,
-      status: widget.match.status,
-      league: widget.match.league,
-      venue: '',
-      startTime: widget.match.startTime,
-      events: widget.match.events,
-    );
-
-    final favorite = widget.favorites.contains(current.home.id) || widget.favorites.contains(current.away.id);
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            const Icon(Icons.sports_soccer, size: 19),
-            const SizedBox(width: 6),
-            const Text('Futebol', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            const Icon(Icons.keyboard_arrow_down, size: 18),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Compartilhar',
-            icon: const Icon(Icons.ios_share, size: 19),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Link da partida pronto para compartilhar.')),
-              );
-            },
-          ),
-          IconButton(
-            tooltip: 'Favoritar time',
-            icon: Icon(favorite ? Icons.star : Icons.star_border, size: 21),
-            color: favorite ? Colors.amber : null,
-            onPressed: () => widget.onToggleFavorite(current.home.id),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              border: Border(bottom: BorderSide(color: theme.dividerColor)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.shield, size: 17),
-                const SizedBox(width: 7),
-                Expanded(
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => LeagueDetailsPage(
-                            api: widget.api,
-                            leagueName: current.league,
-                            country: widget.match.country,
-                            leagueId: widget.match.leagueApiId,
-                            leagueLogo: widget.match.leagueLogo,
-                            season: widget.match.leagueSeason,
-                            initialMatches: [widget.match],
-                          ),
-                        ),
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Text(
-                        '${widget.match.country}: ${current.league}'.trim(),
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ),
-                const Icon(Icons.chevron_right, size: 18),
-              ],
-            ),
-          ),
-          _buildMatchHero(current),
-          Material(
-            color: theme.colorScheme.surface,
-            child: TabBar(
-              controller: tabs,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-              tabs: const [
-                Tab(text: 'SUMÁRIO'),
-                Tab(text: 'CLASSIFICAÇÃO'),
-                Tab(text: 'ESTATÍSTICAS'),
-                Tab(text: 'FORMAÇÕES'),
-                Tab(text: 'ESTATÍSTICAS DE JOGADOR'),
-                Tab(text: 'H2H'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: loading
-                ? const Center(child: CircularProgressIndicator())
-                : error != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text('Erro ao carregar partida.\n\n$error', textAlign: TextAlign.center),
-                        ),
-                      )
-                    : TabBarView(
-                        controller: tabs,
-                        children: [
-                          _buildTimeline(current),
-                          _buildMatchStandings(current),
-                          _buildStats(current),
-                          _buildLineups(current),
-                          _buildPlayerStatsPlaceholder(current),
-                          _buildH2H(),
-                        ],
-                      ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMatchHero(MatchDetails match) {
-    final live = _isLiveStatus(match.status);
-    final scoreColor = live ? Colors.red : Theme.of(context).colorScheme.onSurface;
-    final dateText = match.startTime == null ? '' : '${_formatDate(match.startTime!)} ${_formatTime(match.startTime!)}';
-    final period = _periodText(match.status, widget.match.minute);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
-      decoration: BoxDecoration(
-        color: live ? Colors.red.withValues(alpha: .055) : Theme.of(context).colorScheme.surface,
-        border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(child: _heroTeam(match.home, true)),
-          Expanded(
-            flex: 2,
-            child: Column(
-              children: [
-                Text(dateText, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                const SizedBox(height: 4),
-                Text(
-                  '${match.homeScore ?? 0} - ${match.awayScore ?? 0}',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: scoreColor),
-                ),
-                const SizedBox(height: 2),
-                if (live)
-                  _LiveClock(match: widget.match)
-                else
-                  Text(period, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-              ],
-            ),
-          ),
-          Expanded(child: _heroTeam(match.away, false)),
-        ],
-      ),
-    );
-  }
-
-  Widget _heroTeam(TeamInfo team, bool home) {
-    final favorite = widget.favorites.contains(team.id);
-    return Column(
-      children: [
-        ClubShield(team: team, size: 42),
-        const SizedBox(height: 4),
-        Text(
-          team.name,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 1),
-        Icon(favorite ? Icons.star : Icons.star_border, size: 14, color: favorite ? Colors.amber : Theme.of(context).colorScheme.onSurfaceVariant),
-      ],
-    );
-  }
-
-  Widget _buildPlayerStatsPlaceholder(MatchDetails match) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          'Estatísticas individuais dos jogadores ainda não estão disponíveis para esta partida.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMatchStandings(MatchDetails match) {
-    return FutureBuilder<List<dynamic>>(
-      future: widget.api.getLeagueStandings(widget.match.leagueApiId, season: widget.match.leagueSeason),
-      builder: (context, snapshot) {
-        final rows = snapshot.data ?? const <dynamic>[];
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        if (rows.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Classificação não disponível para esta competição.', textAlign: TextAlign.center)));
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
-          itemCount: rows.length + 1,
-          itemBuilder: (context, index) {
-            if (index == 0) {
-              return const Padding(padding: EdgeInsets.fromLTRB(4, 4, 4, 8), child: Row(children: [SizedBox(width: 28), Expanded(child: Text('EQUIPE', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.w900))), SizedBox(width: 34, child: Text('J', textAlign: TextAlign.center)), SizedBox(width: 34, child: Text('G', textAlign: TextAlign.center)), SizedBox(width: 34, child: Text('P', textAlign: TextAlign.center))]));
-            }
-            final item = _asMap(rows[index - 1]) ?? {};
-            final team = _asMap(item['team']) ?? {};
-            final all = _asMap(item['all']) ?? item;
-            final teamId = _safeString(team['id']);
-            final highlighted = teamId == match.home.apiId || teamId == match.away.apiId;
-            return Container(
-              margin: const EdgeInsets.only(bottom: 5),
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
-              decoration: BoxDecoration(color: highlighted ? const Color(0xFF12384A) : Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(9)),
-              child: Row(children: [
-                SizedBox(width: 28, child: Text('${item['rank'] ?? index}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900))),
-                if ((team['logo']?.toString() ?? '').isNotEmpty) Image.network(team['logo'].toString(), width: 23, height: 23, fit: BoxFit.contain) else const SizedBox(width: 23, height: 23),
-                const SizedBox(width: 7),
-                Expanded(child: Text(_safeString(team['name'], 'Time'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800))),
-                SizedBox(width: 34, child: Text('${all['played'] ?? item['played'] ?? '-'}', textAlign: TextAlign.center)),
-                SizedBox(width: 34, child: Text('${all['win'] ?? all['wins'] ?? item['wins'] ?? '-'}', textAlign: TextAlign.center)),
-                SizedBox(width: 34, child: Text('${item['points'] ?? item['pts'] ?? '-'}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900))),
-              ]),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildStats(MatchDetails match) {
-    if (match.stats.isEmpty) {
-      return Center(
-        child: Text(
-          'Estatísticas ainda não disponíveis.',
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-      );
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.all(12),
-      itemCount: match.stats.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 6),
-      itemBuilder: (context, index) {
-        final stat = match.stats[index];
-        return Container(
-          padding: const EdgeInsets.all(11),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              Expanded(child: Text(stat.home, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
-              Expanded(flex: 2, child: Text(stat.label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-              Expanded(child: Text(stat.away, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildLineups(MatchDetails match) {
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        _LineupSection(title: match.home.name, players: match.homeLineup),
-        const SizedBox(height: 12),
-        _LineupSection(title: match.away.name, players: match.awayLineup),
-      ],
-    );
-  }
-
-  Widget _buildH2H() {
-    if (h2hLoading) return const Center(child: CircularProgressIndicator());
-    if (h2h.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(30),
-          child: Text(
-            'Histórico H2H não disponível para esta partida.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-          ),
-        ),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: h2h.length,
-      itemBuilder: (context, index) => H2HCard(fixture: h2h[index]),
-    );
-  }
-
-  bool _isLiveStatus(String status) {
-    final s = status.toLowerCase();
-    return s.contains('live') || s.contains('inplay') || s.contains('1h') || s.contains('2h') || s.contains('halftime');
-  }
-
-  String _periodText(String status, int? minute) {
-    final s = status.toLowerCase();
-    if (s.contains('finished') || s.contains('ft') || s.contains('ended')) return 'Finalizado';
-    if (s.contains('halftime') || s.contains('ht')) return 'Intervalo';
-    if (minute != null && minute > 45) return '2º tempo';
-    if (minute != null && minute > 0) return '1º tempo';
-    return 'A iniciar';
-  }
-}
-
-class _MiniDetailChip extends StatelessWidget {
-  final String label;
-  const _MiniDetailChip(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(right: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).dividerColor),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800)),
-    );
-  }
-}
-
-// ============================================================
-// DETAIL COMPONENTS
-// ============================================================
-
-class _DetailTeam
-    extends StatelessWidget {
-  final TeamInfo team;
-  final CrossAxisAlignment alignment;
-
-  const _DetailTeam({
-    required this.team,
-    required this.alignment,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment:
-          alignment,
-      children: [
-        ClubShield(
-          team: team,
-          size: 62,
-        ),
-        const SizedBox(
-          height: 8,
-        ),
-        Text(
-          team.name,
-          textAlign:
-              TextAlign.center,
-          maxLines: 2,
-          overflow:
-              TextOverflow.ellipsis,
-          style:
-              TextStyle(
-            fontWeight:
-                FontWeight.bold,
-            fontSize: 15,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _InfoTile
-    extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String value;
-
-  const _InfoTile({
-    required this.icon,
-    required this.title,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
-      padding:
-          const EdgeInsets.all(14),
-      decoration:
-          BoxDecoration(
-        color:
-            const Color(0xFF10231A),
-        borderRadius:
-            BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color:
-                const Color(
-              0xFF18C96E,
-            ),
-          ),
-          const SizedBox(
-            width: 12,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
-              children: [
-                Text(
-                  title,
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.white54,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(
-                  height: 2,
-                ),
-                Text(
-                  value,
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EventRow
-    extends StatelessWidget {
-  final MatchEvent event;
-
-  const _EventRow({
-    required this.event,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    IconData icon;
-
-    switch (event.type) {
-      case 'goal':
-        icon = Icons.sports_soccer;
-        break;
-      case 'yellow':
-        icon = Icons.square;
-        break;
-      case 'red':
-        icon = Icons.square;
-        break;
-      case 'substitution':
-        icon =
-            Icons.swap_vert;
-        break;
-      default:
-        icon = Icons.circle;
-    }
-
-    return Container(
-      padding:
-          const EdgeInsets.all(13),
-      decoration:
-          BoxDecoration(
-        color:
-            const Color(0xFF10231A),
-        borderRadius:
-            BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 40,
-            child: Text(
-              event.minute > 0
-                  ? "${event.minute}'"
-                  : '-',
-              style:
-                  const TextStyle(
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-          ),
-          Icon(
-            icon,
-            size: 20,
-            color: event.type ==
-                    'goal'
-                ? const Color(
-                    0xFF18C96E,
-                  )
-                : event.type ==
-                        'yellow'
-                    ? Colors.amber
-                    : event.type ==
-                            'red'
-                        ? Colors.red
-                        : Colors.white54,
-          ),
-          const SizedBox(
-            width: 12,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
-              children: [
-                Text(
-                  _eventTitle(
-                    event.type,
-                  ),
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.white54,
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  event.player,
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-                if (event.assist != null)
-                  Text(
-                    'Assistência: ${event.assist}',
-                    style:
-                        const TextStyle(
-                      color:
-                          Colors.white54,
-                      fontSize: 12,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _eventTitle(
-    String type,
-  ) {
-    switch (type) {
-      case 'goal':
-        return 'GOL';
-      case 'yellow':
-        return 'CARTÃO AMARELO';
-      case 'red':
-        return 'CARTÃO VERMELHO';
-      case 'substitution':
-        return 'SUBSTITUIÇÃO';
-      default:
-        return 'EVENTO';
-    }
-  }
-}
-
-class _LineupSection
-    extends StatelessWidget {
-  final String title;
-  final List<MatchLineup> players;
-
-  const _LineupSection({
-    required this.title,
-    required this.players,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style:
-              const TextStyle(
-            fontSize: 19,
-            fontWeight:
-                FontWeight.w900,
-          ),
-        ),
-        const SizedBox(
-          height: 10,
-        ),
-        if (players.isEmpty)
-          const Text(
-            'Escalação não disponível.',
-            style:
-                TextStyle(
-              color:
-                  Colors.white54,
-            ),
-          )
-        else
-          ...players.map(
-            (player) => Container(
-              margin:
-                  const EdgeInsets
-                      .only(
-                bottom: 5,
-              ),
-              padding:
-                  const EdgeInsets
-                      .symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
-              decoration:
-                  BoxDecoration(
-                color:
-                    const Color(
-                  0xFF10231A,
-                ),
-                borderRadius:
-                    BorderRadius
-                        .circular(
-                  12,
-                ),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 28,
-                    child: Text(
-                      player.number,
-                      style:
-                          const TextStyle(
-                        color:
-                            Colors.white54,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      player.player,
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    player.position,
-                    style:
-                        const TextStyle(
-                      color:
-                          Colors.white54,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-// ============================================================
-// PÁGINA DO TIME
-// ============================================================
-
-class TeamDetailsPage extends StatefulWidget {
-  final KickoffApiService api;
-  final TeamInfo team;
-  final int? season;
-
-  const TeamDetailsPage({super.key, required this.api, required this.team, this.season});
-
-  @override
-  State<TeamDetailsPage> createState() => _TeamDetailsPageState();
-}
-
-class _TeamDetailsPageState extends State<TeamDetailsPage> with SingleTickerProviderStateMixin {
-  late final TabController tabs;
-  List<dynamic> fixtures = [];
-  List<dynamic> standings = [];
-  bool loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    tabs = TabController(length: 4, vsync: this);
-    _load();
-  }
-
-  @override
-  void dispose() { tabs.dispose(); super.dispose(); }
-
-  Future<void> _load() async {
-    setState(() => loading = true);
-    try {
-      if (widget.team.apiId.isNotEmpty) {
-        fixtures = await widget.api.getTeamFixtures(widget.team.apiId, season: widget.season);
-      }
-    } catch (_) {}
-    if (mounted) setState(() => loading = false);
-  }
-
-  List<LiveMatch> _parsed() => fixtures.map(_parseLiveMatch).where((m) => m.id != 0).toList();
-
-  @override
-  Widget build(BuildContext context) {
-    final games = _parsed();
-    final results = games.where((m) => m.isFinished).toList()..sort((a,b) => (b.startTime?.millisecondsSinceEpoch ?? 0).compareTo(a.startTime?.millisecondsSinceEpoch ?? 0));
-    final calendar = games.where((m) => !m.isFinished).toList()..sort((a,b) => (a.startTime?.millisecondsSinceEpoch ?? 0).compareTo(b.startTime?.millisecondsSinceEpoch ?? 0));
-    return Scaffold(
-      appBar: AppBar(title: const Text('Futebol'), actions: [IconButton(onPressed: () {}, icon: const Icon(Icons.star_border))]),
-      body: Column(children: [
-        Container(color: const Color(0xFF0A3142), padding: const EdgeInsets.all(14), child: Row(children: [ClubShield(team: widget.team, size: 58), const SizedBox(width: 12), Expanded(child: Text(widget.team.name, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)))])),
-        TabBar(controller: tabs, isScrollable: true, tabs: const [Tab(text:'RESUMO'), Tab(text:'CALENDÁRIO'), Tab(text:'RESULTADOS'), Tab(text:'CLASSIFICAÇÃO')]),
-        Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : TabBarView(controller: tabs, children: [
-          ListView(padding: const EdgeInsets.all(10), children: [const Text('Próximos jogos', style: TextStyle(fontSize:16,fontWeight:FontWeight.w900)), const SizedBox(height:6), ...calendar.take(5).map((m) => MatchCard(compact:true, match:m, favorite:false, onFavorite:(){}, onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MatchDetailsPage(match:m,api:widget.api,favorites:<int>{},onToggleFavorite:(_ )async{})))))]),
-          ListView(padding: const EdgeInsets.all(10), children: calendar.map((m) => MatchCard(compact:true, match:m, favorite:false, onFavorite:(){}, onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MatchDetailsPage(match:m,api:widget.api,favorites:<int>{},onToggleFavorite:(_ )async{}))))).toList()),
-          ListView(padding: const EdgeInsets.all(10), children: results.map((m) => MatchCard(compact:true, match:m, favorite:false, onFavorite:(){}, onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MatchDetailsPage(match:m,api:widget.api,favorites:<int>{},onToggleFavorite:(_ )async{}))))).toList()),
-          ListView(padding: const EdgeInsets.all(10), children: [const Center(child: Text('Classificação da competição disponível ao abrir a liga.'))]),
-        ])),
-      ]),
-    );
-  }
-}
-
-// ============================================================
-// H2H
-// ============================================================
-
-Map<String, dynamic> _normalizeH2HFixture(dynamic raw) {
-  final original = _asMap(raw) ?? <String, dynamic>{};
-  final nestedFixture = _asMap(original['fixture']);
-  final nestedTeams = _asMap(original['teams']);
-  final nestedGoals = _asMap(original['goals']);
-
-  final source = <String, dynamic>{
-    ...?nestedFixture,
-    ...original,
-  };
-
-  // KickoffAPI H2H can return teams.home/away and goals.home/away.
-  final teams = _asMap(source['teams']) ?? nestedTeams;
-  final goals = _asMap(source['goals']) ?? nestedGoals;
-
-  if (teams != null) {
-    source['home'] ??= teams['home'];
-    source['away'] ??= teams['away'];
-  }
-
-  if (goals != null) {
-    final currentScore = _asMap(source['score']) ?? <String, dynamic>{};
-    currentScore['home'] ??= goals['home'];
-    currentScore['away'] ??= goals['away'];
-    source['score'] = currentScore;
-  }
-  final score = _asMap(source['score']);
-  if (score != null) {
-    final homeValue = _scoreValue(score, 'home');
-    final awayValue = _scoreValue(score, 'away');
-    if (homeValue != null) source['homeScore'] = homeValue;
-    if (awayValue != null) source['awayScore'] = awayValue;
-  }
-
-  // Some responses keep the date inside fixture.date.
-  if (source['date'] == null && nestedFixture?['date'] != null) {
-    source['date'] = nestedFixture?['date'];
-  }
-
-  return source;
-}
-
-class H2HCard
-    extends StatelessWidget {
-  final dynamic fixture;
-
-  const H2HCard({
-    super.key,
-    required this.fixture,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final data = _normalizeH2HFixture(fixture);
-    final home =
-        _findHomeTeam(data);
-
-    final away =
-        _findAwayTeam(data);
-
-    final homeScore =
-        _scoreForTeam(
-      data,
-      home.id,
-    );
-
-    final awayScore =
-        _scoreForTeam(
-      data,
-      away.id,
-    );
-
-    final events =
-        _parseEvents(data);
-
-    final goals = events
-        .where(
-          (e) => e.type == 'goal',
+        self._ordem_colunas_original = list(
+            range(16)
         )
-        .toList();
 
-    final date =
-        _findStartTime(data);
+        self._larguras_colunas_original = {}
 
-    return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
-      padding:
-          const EdgeInsets.all(16),
-      decoration:
-          BoxDecoration(
-        color:
-            const Color(0xFF10231A),
-        borderRadius:
-            BorderRadius.circular(
-          18,
-        ),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _H2HTeam(
-                  team: home,
-                  alignment:
-                      CrossAxisAlignment
-                          .end,
-                ),
-              ),
-              Padding(
-                padding:
-                    const EdgeInsets
-                        .symmetric(
-                  horizontal: 14,
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      '${homeScore ?? 0} - ${awayScore ?? 0}',
-                      style:
-                          const TextStyle(
-                        fontSize: 20,
-                        fontWeight:
-                            FontWeight.w900,
-                      ),
+        self.colunas_fixadas = set()
+
+        # ====================================================
+        # ARQUIVO DE CONFIGURAÇÃO
+        # ====================================================
+
+        pasta_configuracao = os.path.join(
+            os.environ.get("APPDATA", os.path.expanduser("~")),
+            "XML"
+        )
+
+        os.makedirs(
+            pasta_configuracao,
+            exist_ok=True
+        )
+
+        self.arquivo_configuracao = os.path.join(
+            pasta_configuracao,
+            "config_tabela.json"
+        )
+
+        # ====================================================
+        # JANELA PRINCIPAL
+        # ====================================================
+
+        central = QWidget()
+
+        self.setCentralWidget(
+            central
+        )
+
+        layout = QVBoxLayout(
+            central
+        )
+
+        # ====================================================
+        # BOTÕES
+        # ====================================================
+
+        botoes = QHBoxLayout()
+
+        self.btAbrir = BotaoAnimado(
+            "Abrir PDF / Baixar XML"
+        )
+
+        self.btAbrir.clicked.connect(
+            self.abrir_pdf
+        )
+
+        botoes.addWidget(
+            self.btAbrir
+        )
+
+        self.btPasta = BotaoAnimado(
+            "Abrir Pasta XML"
+        )
+
+        self.btPasta.clicked.connect(
+            self.abrir_pasta
+        )
+
+        botoes.addWidget(
+            self.btPasta
+        )
+
+        self.btSalvar = BotaoAnimado(
+            "Salvar"
+        )
+
+        self.btSalvar.clicked.connect(
+            self.salvar_configuracao
+        )
+
+        botoes.addWidget(
+            self.btSalvar
+        )
+
+        self.btColuna = BotaoAnimado(
+            "Coluna"
+        )
+
+        self.btColuna.clicked.connect(
+            self.abrir_menu_coluna
+        )
+
+        botoes.addWidget(
+            self.btColuna
+        )
+
+        self.btPesquisarEAN = BotaoAnimado(
+            "Pesquisar EAN"
+        )
+        self.btPesquisarEAN.setToolTip(
+            "Pesquisa o EAN selecionado na internet e salva o resultado na base local."
+        )
+        self.btPesquisarEAN.clicked.connect(
+            self.pesquisar_ean_selecionado
+        )
+        botoes.addWidget(
+            self.btPesquisarEAN
+        )
+
+        self.btPesquisarNaoCadastrados = BotaoAnimado(
+            "Pesquisar não cadastrados"
+        )
+        self.btPesquisarNaoCadastrados.setToolTip(
+            "Pesquisa somente os EANs que estão como Não cadastrado e salva os resultados na base local."
+        )
+        self.btPesquisarNaoCadastrados.clicked.connect(
+            self.pesquisar_eans_nao_cadastrados
+        )
+        botoes.addWidget(
+            self.btPesquisarNaoCadastrados
+        )
+
+        # ====================================================
+        # CHECKBOX SELECIONAR CÉLULAS
+        # ====================================================
+
+        self.chkSelecionar = CheckBoxAnimado(
+            "Selecionar"
+        )
+
+        self.chkSelecionar.setToolTip(
+            "Ativa a seleção manual de células. As células selecionadas ficam laranja."
+        )
+
+        self.chkSelecionar.stateChanged.connect(
+            self.alternar_modo_selecao
+        )
+
+        botoes.addWidget(
+            self.chkSelecionar
+        )
+
+        botoes.addStretch()
+
+        layout.addLayout(
+            botoes
+        )
+
+        # ====================================================
+        # PESQUISA
+        # ====================================================
+
+        pesquisa = QHBoxLayout()
+
+        self.txtPesquisa = CampoAnimado()
+
+        self.txtPesquisa.setPlaceholderText(
+            "Pesquisar codigo, produto, NF ou chave..."
+        )
+
+        self.txtPesquisa.textChanged.connect(
+            self.filtrar
+        )
+
+        pesquisa.addWidget(
+            self.txtPesquisa
+        )
+
+        self.txtEmbalagem = CampoAnimado()
+
+        self.txtEmbalagem.setPlaceholderText(
+            "Filtrar Emb (UN, CX, KG...)"
+        )
+
+        self.txtEmbalagem.textChanged.connect(
+            self.filtrar
+        )
+
+        pesquisa.addWidget(
+            self.txtEmbalagem
+        )
+
+        self.chkEmbDiferenteUN = CheckBoxAnimado(
+            "Emb diferente de UN"
+        )
+
+        self.chkEmbDiferenteUN.stateChanged.connect(
+            self.filtrar
+        )
+
+        pesquisa.addWidget(
+            self.chkEmbDiferenteUN
+        )
+
+        layout.addLayout(
+            pesquisa
+        )
+
+        # ====================================================
+        # RESUMO
+        # ====================================================
+
+        self.lblFornecedor = QLabel(
+            "Fornecedor:"
+        )
+
+        # Nome do fornecedor conforme o nome do arquivo PDF selecionado.
+        # Este campo e adicional e nao altera o fornecedor lido do XML.
+        self.lblFornArquivo = QLabel(
+            ""
+        )
+
+        self.lblFornArquivo.setStyleSheet(
+            """
+            QLabel {
+                font-weight: bold;
+                color: #d6b300;
+            }
+            """
+        )
+
+        self.lblNF = QLabel(
+            "NF:"
+        )
+
+        # Os campos de fornecedor, FORN (nome do arquivo) e NF
+        # podem ser clicados para copiar o texto para a area de transferencia.
+        for _label in (
+            self.lblFornecedor,
+            self.lblFornArquivo,
+            self.lblNF,
+        ):
+            _label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            _label.setCursor(
+                Qt.CursorShape.IBeamCursor
+            )
+
+        self.lblFornecedor.mousePressEvent = (
+            lambda event, label=self.lblFornecedor:
+            self.copiar_texto_label(label, event)
+        )
+        self.lblFornArquivo.mousePressEvent = (
+            lambda event, label=self.lblFornArquivo:
+            self.copiar_texto_label(label, event)
+        )
+        self.lblNF.mousePressEvent = (
+            lambda event, label=self.lblNF:
+            self.copiar_texto_label(label, event)
+        )
+
+        self.lblChave = QLabel(
+            "Chave NF-e:"
+        )
+
+        self.txtChave = CampoAnimado()
+
+        self.txtChave.setReadOnly(
+            True
+        )
+
+        self.txtChave.setPlaceholderText(
+            "Chave NF-e"
+        )
+
+        self.lblPagamento = QLabel(
+            "Forma de Pagamento:"
+        )
+
+        # Exibição da forma de pagamento com destaque individual
+        # para o valor da parcela e para a data de vencimento.
+        self.txtPagamento = QLabel(
+            "Forma de Pagamento"
+        )
+
+        self.txtPagamento.setWordWrap(
+            True
+        )
+
+        self.txtPagamento.setTextFormat(
+            Qt.RichText
+        )
+
+        self.txtPagamento.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+
+        self.txtPagamento.setStyleSheet(
+            """
+            QLabel {
+                background-color: white;
+                color: black;
+                border: 1px solid #cccccc;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            """
+        )
+
+        self.lblQtd = QLabel(
+            "Produtos: 0"
+        )
+
+        # FORNECEDOR + NF NA MESMA LINHA
+        linha_fornecedor_nf = QHBoxLayout()
+        linha_fornecedor_nf.setContentsMargins(0, 0, 0, 0)
+        linha_fornecedor_nf.setSpacing(18)
+
+        linha_fornecedor_nf.addWidget(
+            self.lblFornecedor
+        )
+
+        linha_fornecedor_nf.addWidget(
+            self.lblFornArquivo
+        )
+
+        linha_fornecedor_nf.addWidget(
+            self.lblNF
+        )
+
+        linha_fornecedor_nf.addStretch()
+
+        layout.addLayout(
+            linha_fornecedor_nf
+        )
+
+        layout.addWidget(
+            self.lblChave
+        )
+
+        layout.addWidget(
+            self.txtChave
+        )
+
+        layout.addWidget(
+            self.lblPagamento
+        )
+
+        layout.addWidget(
+            self.txtPagamento
+        )
+
+        layout.addWidget(
+            self.lblQtd
+        )
+
+        # ====================================================
+        # TABELA
+        # ====================================================
+
+        self.tabela = QTableWidget()
+
+        self.tabela.setColumnCount(
+            18
+        )
+
+        self.tabela.setHorizontalHeaderLabels([
+            "Codigo ERP",
+            "Descricao ERP",
+            "Pr Cpra ERP",
+            "Qtd Ult Ent",
+            "Pr Ult Cpra Unit.",
+            "Pr Ult Cpra Ant."
+            "Dt Ult Compra",
+            "Cod F",
+            "Descricao XML",
+            "Emb",
+            "QUANT",
+            "Qtd/Emb.",
+            "Mult",
+            "SEQ",
+            "Valor XML",
+            "Valor UN XML",
+            "Qtd Total",
+            "Cod Barras XML"
+        ])
+
+        self.tabela.setAlternatingRowColors(
+            False
+        )
+
+        self.tabela.setMouseTracking(
+            True
+        )
+
+        self.tabela.setEditTriggers(
+            QTableWidget.NoEditTriggers
+        )
+
+        self.tabela.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAsNeeded
+        )
+
+        self.tabela.setVerticalScrollBarPolicy(
+            Qt.ScrollBarAsNeeded
+        )
+
+        self.tabela.cellClicked.connect(
+            self.selecionar_coluna
+        )
+
+        self.tabela.cellClicked.connect(
+            self.alternar_selecao_celula
+        )
+
+        self.tabela.horizontalHeader().sectionClicked.connect(
+            self.selecionar_coluna_header
+        )
+
+        self.tabela.horizontalHeader().setSectionsMovable(
+            True
+        )
+
+        self.tabela.horizontalHeader().setSectionsClickable(
+            True
+        )
+
+        self.tabela.horizontalHeader().setContextMenuPolicy(
+            Qt.CustomContextMenu
+        )
+
+        self.tabela.horizontalHeader().customContextMenuRequested.connect(
+            self.abrir_menu_coluna_direito
+        )
+
+        self.tabela.setContextMenuPolicy(
+            Qt.CustomContextMenu
+        )
+
+        self.tabela.customContextMenuRequested.connect(
+            self.abrir_menu_coluna_celula
+        )
+
+        self.tabela.setSelectionBehavior(
+            QTableWidget.SelectItems
+        )
+
+        self.tabela.setSelectionMode(
+            QTableWidget.SingleSelection
+        )
+
+        self.tabela.setSortingEnabled(
+            False
+        )
+
+        self.tabela.horizontalHeader().setStretchLastSection(
+            False
+        )
+
+        # ====================================================
+        # LARGURAS
+        # ====================================================
+
+        for indice in range(
+            self.tabela.columnCount()
+        ):
+
+            self._larguras_colunas_original[indice] = (
+                self.tabela.columnWidth(
+                    indice
+                )
+            )
+
+        # ====================================================
+        # ESTILO
+        # ====================================================
+
+        self.tabela.setStyleSheet(
+            """
+            QTableWidget {
+                background-color: white;
+                color: black;
+                gridline-color: #d0d0d0;
+                selection-background-color: #dcecff;
+                selection-color: black;
+            }
+
+            QTableWidget::item:hover {
+                background-color: #eaf4ff;
+                color: #0b3d91;
+            }
+
+            QTableWidget::item:selected {
+                background-color: #dcecff;
+                color: black;
+            }
+
+            QTableWidget::item:selected:active {
+                background-color: #dcecff;
+                color: black;
+            }
+
+            QScrollBar:horizontal {
+                background: #d0d0d0;
+                height: 14px;
+                margin: 0px;
+            }
+
+            QScrollBar::handle:horizontal {
+                background: #222222;
+                min-width: 30px;
+                border-radius: 2px;
+            }
+
+            QScrollBar::handle:horizontal:hover {
+                background: #000000;
+            }
+
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {
+                background: #bdbdbd;
+                width: 14px;
+            }
+
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
+                background: #e5e5e5;
+            }
+
+            QScrollBar:vertical {
+                background: #d0d0d0;
+                width: 14px;
+                margin: 0px;
+            }
+
+            QScrollBar::handle:vertical {
+                background: #222222;
+                min-height: 30px;
+                border-radius: 2px;
+            }
+
+            QScrollBar::handle:vertical:hover {
+                background: #000000;
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                background: #bdbdbd;
+                height: 14px;
+            }
+
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: #e5e5e5;
+            }
+
+            QHeaderView::section {
+                background-color: #eeeeee;
+                color: #111111;
+                padding: 5px;
+                border: 1px solid #cccccc;
+                font-weight: bold;
+            }
+
+            QHeaderView::section:hover {
+                background-color: #dcecff;
+                color: #0b3d91;
+            }
+            """
+        )
+
+        layout.addWidget(
+            self.tabela
+        )
+
+        self.carregar_configuracao()
+
+    # ========================================================
+    # FECHAMENTO
+    # ========================================================
+
+    def closeEvent(self, event):
+
+        if self.conexao is not None:
+
+            try:
+
+                if not self.conexao.closed:
+
+                    self.conexao.close()
+
+            except Exception:
+                pass
+
+        event.accept()
+
+    # ========================================================
+    # TESTE DA CONEXÃO
+    # ========================================================
+
+    def banco_conectado(self):
+
+        if self.conexao is None:
+            return False
+
+        try:
+
+            if self.conexao.closed:
+                return False
+
+            cursor = self.conexao.cursor()
+
+            cursor.execute(
+                "SELECT 1"
+            )
+
+            resultado = cursor.fetchone()
+
+            cursor.close()
+
+            return resultado == (1,)
+
+        except Exception:
+
+            return False
+
+    # ========================================================
+    # SALVAR CONFIGURAÇÃO DA TABELA
+    # ========================================================
+
+    def salvar_configuracao(self):
+
+        try:
+
+            header = self.tabela.horizontalHeader()
+
+            ordem = []
+
+            for visual in range(
+                self.tabela.columnCount()
+            ):
+
+                logico = header.logicalIndex(
+                    visual
+                )
+
+                ordem.append(
+                    logico
+                )
+
+            larguras = {}
+
+            ocultas = []
+
+            for coluna in range(
+                self.tabela.columnCount()
+            ):
+
+                larguras[str(coluna)] = (
+                    self.tabela.columnWidth(
+                        coluna
+                    )
+                )
+
+                if self.tabela.isColumnHidden(
+                    coluna
+                ):
+
+                    ocultas.append(
+                        coluna
+                    )
+
+            fixadas = list(
+                self.colunas_fixadas
+            )
+
+            alinhamentos = {}
+
+            for coluna, alinhamento in (
+                self.alinhamento_colunas.items()
+            ):
+
+                alinhamentos[str(coluna)] = (
+                    int(alinhamento)
+                )
+
+            configuracao = {
+                "ordem": ordem,
+                "larguras": larguras,
+                "ocultas": ocultas,
+                "fixadas": fixadas,
+                "alinhamentos": alinhamentos,
+            }
+
+            with open(
+                self.arquivo_configuracao,
+                "w",
+                encoding="utf-8"
+            ) as arquivo:
+
+                json.dump(
+                    configuracao,
+                    arquivo,
+                    ensure_ascii=False,
+                    indent=4
+                )
+
+            QMessageBox.information(
+                self,
+                "Salvar",
+                "Configuracao da tabela salva com sucesso."
+            )
+
+        except Exception as erro:
+
+            QMessageBox.critical(
+                self,
+                "Erro ao salvar",
+                str(erro)
+            )
+
+    # ========================================================
+    # CARREGAR CONFIGURAÇÃO
+    # ========================================================
+
+    def carregar_configuracao(self):
+
+        if not os.path.exists(
+            self.arquivo_configuracao
+        ):
+            return
+
+        try:
+
+            with open(
+                self.arquivo_configuracao,
+                "r",
+                encoding="utf-8"
+            ) as arquivo:
+
+                configuracao = json.load(
+                    arquivo
+                )
+
+            header = self.tabela.horizontalHeader()
+
+            ordem = configuracao.get(
+                "ordem",
+                []
+            )
+
+            # Compatibilidade com configurações antigas.
+            # A versão anterior tinha 15 colunas. A nova coluna QUANT
+            # foi inserida na posição lógica 8, logo após Emb (7).
+            if len(ordem) == 15 and self.tabela.columnCount() == 16:
+                ordem = [
+                    int(coluna) + 1 if int(coluna) >= 8 else int(coluna)
+                    for coluna in ordem
+                ]
+
+                try:
+                    pos_emb = ordem.index(7)
+                    ordem.insert(pos_emb + 1, 8)
+                except ValueError:
+                    ordem.append(8)
+
+            if len(
+                ordem
+            ) == self.tabela.columnCount():
+
+                for visual_destino, logico in enumerate(
+                    ordem
+                ):
+
+                    visual_atual = header.visualIndex(
+                        int(logico)
+                    )
+
+                    if visual_atual != visual_destino:
+
+                        header.moveSection(
+                            visual_atual,
+                            visual_destino
+                        )
+
+            larguras = configuracao.get(
+                "larguras",
+                {}
+            )
+
+            if len(configuracao.get("ordem", [])) == 15 and self.tabela.columnCount() == 16:
+                larguras = {
+                    str(int(coluna) + 1 if int(coluna) >= 8 else int(coluna)): largura
+                    for coluna, largura in larguras.items()
+                }
+
+            for coluna, largura in larguras.items():
+
+                coluna = int(
+                    coluna
+                )
+
+                if 0 <= coluna < self.tabela.columnCount():
+
+                    self.tabela.setColumnWidth(
+                        coluna,
+                        int(largura)
+                    )
+
+            ocultas = configuracao.get(
+                "ocultas",
+                []
+            )
+
+            if len(configuracao.get("ordem", [])) == 15 and self.tabela.columnCount() == 16:
+                ocultas = [
+                    int(coluna) + 1 if int(coluna) >= 8 else int(coluna)
+                    for coluna in ocultas
+                ]
+
+            for coluna in ocultas:
+
+                coluna = int(
+                    coluna
+                )
+
+                if 0 <= coluna < self.tabela.columnCount():
+
+                    self.tabela.setColumnHidden(
+                        coluna,
+                        True
+                    )
+
+            alinhamentos = configuracao.get(
+                "alinhamentos",
+                {}
+            )
+
+            self.alinhamento_colunas.clear()
+
+            config_antiga_15 = (
+                len(configuracao.get("ordem", [])) == 15
+                and self.tabela.columnCount() == 18
+            )
+
+            for coluna, alinhamento in alinhamentos.items():
+
+                coluna = int(coluna)
+
+                if config_antiga_15 and coluna >= 8:
+                    coluna += 1
+
+                self.alinhamento_colunas[
+                    coluna
+                ] = Qt.AlignmentFlag(
+                    int(alinhamento)
+                )
+
+            fixadas = configuracao.get(
+                "fixadas",
+                []
+            )
+
+            if len(configuracao.get("ordem", [])) == 15 and self.tabela.columnCount() == 16:
+                fixadas = [
+                    int(coluna) + 1 if int(coluna) >= 8 else int(coluna)
+                    for coluna in fixadas
+                ]
+
+            self.colunas_fixadas.clear()
+
+            for coluna in fixadas:
+
+                coluna = int(
+                    coluna
+                )
+
+                if 0 <= coluna < self.tabela.columnCount():
+
+                    largura = self.tabela.columnWidth(
+                        coluna
+                    )
+
+                    header.setSectionResizeMode(
+                        coluna,
+                        QHeaderView.Fixed
+                    )
+
+                    self.tabela.setColumnWidth(
+                        coluna,
+                        largura
+                    )
+
+                    self.colunas_fixadas.add(
+                        coluna
+                    )
+
+        except Exception:
+            pass
+
+    # ========================================================
+    # MENU CABEÇALHO
+    # ========================================================
+
+    def abrir_menu_coluna_direito(
+        self,
+        posicao
+    ):
+
+        header = self.tabela.horizontalHeader()
+
+        coluna = header.logicalIndexAt(
+            posicao
+        )
+
+        if coluna < 0 or coluna >= self.tabela.columnCount():
+            return
+
+        self.coluna_selecionada = coluna
+
+        self.abrir_menu_coluna(
+            posicao_global=header.mapToGlobal(
+                posicao
+            )
+        )
+
+    # ========================================================
+    # MENU CÉLULA
+    # ========================================================
+
+    def abrir_menu_coluna_celula(
+        self,
+        posicao
+    ):
+
+        coluna = self.tabela.columnAt(
+            posicao.x()
+        )
+
+        if coluna < 0 or coluna >= self.tabela.columnCount():
+            return
+
+        self.coluna_selecionada = coluna
+
+        self.abrir_menu_coluna(
+            posicao_global=self.tabela.mapToGlobal(
+                posicao
+            )
+        )
+
+    # ========================================================
+    # SELEÇÃO
+    # ========================================================
+
+    def alternar_modo_selecao(
+        self,
+        estado
+    ):
+
+        ativo = bool(estado)
+
+        if not ativo:
+            # Ao desmarcar, remove imediatamente todas as marcações.
+            for linha, coluna in list(self._celulas_selecionadas):
+                self._pintar_celula_selecionada(
+                    linha,
+                    coluna,
+                    False
+                )
+
+            self._celulas_selecionadas.clear()
+            self.tabela.clearSelection()
+
+    def alternar_selecao_celula(
+        self,
+        linha,
+        coluna
+    ):
+
+        # Fora do modo Selecionar, mantém exatamente o comportamento
+        # normal da tabela.
+        if not self.chkSelecionar.isChecked():
+            return
+
+        chave = (linha, coluna)
+
+        if chave in self._celulas_selecionadas:
+            self._celulas_selecionadas.remove(chave)
+            selecionada = False
+        else:
+            self._celulas_selecionadas.add(chave)
+            selecionada = True
+
+        self._pintar_celula_selecionada(
+            linha,
+            coluna,
+            selecionada
+        )
+
+        # Não deixa o destaque padrão azul da seleção do Qt esconder
+        # a marcação laranja.
+        self.tabela.clearSelection()
+
+    def _pintar_celula_selecionada(
+        self,
+        linha,
+        coluna,
+        selecionada
+    ):
+
+        if (
+            linha < 0
+            or linha >= self.tabela.rowCount()
+            or coluna < 0
+            or coluna >= self.tabela.columnCount()
+        ):
+            return
+
+        cor = QColor(
+            255,
+            165,
+            0
+        ) if selecionada else QColor(
+            255,
+            255,
+            255
+        )
+
+        item = self.tabela.item(
+            linha,
+            coluna
+        )
+
+        if item is not None:
+            item.setBackground(
+                cor
+            )
+
+        # A coluna Descricao XML usa QLabel como widget da célula.
+        # Nesse caso, a cor precisa ser aplicada diretamente ao QLabel.
+        widget = self.tabela.cellWidget(
+            linha,
+            coluna
+        )
+
+        if widget is not None:
+            if selecionada:
+                widget.setStyleSheet(
+                    """
+                    QLabel {
+                        background-color: rgb(255, 165, 0);
+                        color: black;
+                        padding: 2px;
+                    }
+                    """
+                )
+            else:
+                widget.setStyleSheet(
+                    """
+                    QLabel {
+                        background-color: transparent;
+                        color: black;
+                        padding: 2px;
+                    }
+                    """
+                )
+
+    def limpar_selecoes_manuais(self):
+
+        for linha, coluna in list(
+            self._celulas_selecionadas
+        ):
+            self._pintar_celula_selecionada(
+                linha,
+                coluna,
+                False
+            )
+
+        self._celulas_selecionadas.clear()
+
+    # ========================================================
+    # SELEÇÃO
+    # ========================================================
+
+    def selecionar_coluna(
+        self,
+        linha,
+        coluna
+    ):
+
+        self.coluna_selecionada = coluna
+
+    def selecionar_coluna_header(
+        self,
+        coluna
+    ):
+
+        self.coluna_selecionada = coluna
+
+    def obter_coluna_selecionada(self):
+
+        coluna = self.coluna_selecionada
+
+        if (
+            coluna < 0
+            or coluna >= self.tabela.columnCount()
+        ):
+
+            coluna = self.tabela.currentColumn()
+
+        if (
+            coluna < 0
+            or coluna >= self.tabela.columnCount()
+        ):
+
+            QMessageBox.information(
+                self,
+                "Coluna",
+                "Clique primeiro em uma coluna da tabela."
+            )
+
+            return -1
+
+        self.coluna_selecionada = coluna
+
+        return coluna
+
+    # ========================================================
+    # CRIAR AÇÃO
+    # ========================================================
+
+    def criar_acao_coluna(
+        self,
+        menu,
+        texto,
+        funcao
+    ):
+
+        acao = QAction(
+            texto,
+            self
+        )
+
+        acao.triggered.connect(
+            funcao
+        )
+
+        menu.addAction(
+            acao
+        )
+
+        return acao
+
+    # ========================================================
+    # MENU COLUNA
+    # ========================================================
+
+    def abrir_menu_coluna(
+        self,
+        posicao_global=None
+    ):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        menu = QMenu(
+            self
+        )
+
+        menu.setStyleSheet(
+            """
+            QMenu {
+                background-color: white;
+                color: #111111;
+                border: 1px solid #cccccc;
+                padding: 4px;
+            }
+
+            QMenu::item {
+                padding: 7px 22px 7px 22px;
+                border-radius: 4px;
+            }
+
+            QMenu::item:selected {
+                background-color: #dcecff;
+                color: #0b3d91;
+            }
+            """
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Expandir",
+            self.coluna_expandir
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Reduzir",
+            self.coluna_reduzir
+        )
+
+        menu.addSeparator()
+
+        self.criar_acao_coluna(
+            menu,
+            "Mover para esquerda",
+            self.coluna_mover_esquerda
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Mover para direita",
+            self.coluna_mover_direita
+        )
+
+        menu.addSeparator()
+
+        self.criar_acao_coluna(
+            menu,
+            "Apagar / Ocultar",
+            self.coluna_apagar
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Restaurar",
+            self.coluna_restaurar
+        )
+
+        menu.addSeparator()
+
+        self.criar_acao_coluna(
+            menu,
+            "Fixar",
+            self.coluna_fixar
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Desfixar",
+            self.coluna_desfixar
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Organizar / Ajustar ao conteudo",
+            self.coluna_organizar
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Localizar coluna",
+            self.coluna_localizar
+        )
+
+        menu.addSeparator()
+
+        self.criar_acao_coluna(
+            menu,
+            "Esquerda",
+            self.coluna_alinhar_esquerda
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Centro",
+            self.coluna_alinhar_centro
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Direita",
+            self.coluna_alinhar_direita
+        )
+
+        menu.addSeparator()
+
+        self.criar_acao_coluna(
+            menu,
+            "Crescente",
+            self.coluna_ordenar_crescente
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Decrescente",
+            self.coluna_ordenar_decrescente
+        )
+
+        if posicao_global is None:
+
+            posicao_global = (
+                self.btColuna.mapToGlobal(
+                    self.btColuna.rect().bottomLeft()
+                )
+            )
+
+        menu.exec(
+            posicao_global
+        )
+
+    # ========================================================
+    # EXPANDIR
+    # ========================================================
+
+    def coluna_expandir(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        largura = self.tabela.columnWidth(
+            coluna
+        )
+
+        self.tabela.setColumnWidth(
+            coluna,
+            largura + 30
+        )
+
+    # ========================================================
+    # REDUZIR
+    # ========================================================
+
+    def coluna_reduzir(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        largura = self.tabela.columnWidth(
+            coluna
+        )
+
+        self.tabela.setColumnWidth(
+            coluna,
+            max(
+                40,
+                largura - 30
+            )
+        )
+
+    # ========================================================
+    # MOVER ESQUERDA
+    # ========================================================
+
+    def coluna_mover_esquerda(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        header = self.tabela.horizontalHeader()
+
+        visual = header.visualIndex(
+            coluna
+        )
+
+        if visual <= 0:
+            return
+
+        header.moveSection(
+            visual,
+            visual - 1
+        )
+
+    # ========================================================
+    # MOVER DIREITA
+    # ========================================================
+
+    def coluna_mover_direita(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        header = self.tabela.horizontalHeader()
+
+        visual = header.visualIndex(
+            coluna
+        )
+
+        ultimo = (
+            self.tabela.columnCount()
+            - 1
+        )
+
+        if visual >= ultimo:
+            return
+
+        header.moveSection(
+            visual,
+            visual + 1
+        )
+
+    # ========================================================
+    # OCULTAR
+    # ========================================================
+
+    def coluna_apagar(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        self.tabela.setColumnHidden(
+            coluna,
+            True
+        )
+
+    # ========================================================
+    # RESTAURAR
+    # ========================================================
+
+    def coluna_restaurar(self):
+
+        header = self.tabela.horizontalHeader()
+
+        for coluna in range(
+            self.tabela.columnCount()
+        ):
+
+            self.tabela.setColumnHidden(
+                coluna,
+                False
+            )
+
+        for visual_destino, logico in enumerate(
+            self._ordem_colunas_original
+        ):
+
+            visual_atual = header.visualIndex(
+                logico
+            )
+
+            if visual_atual != visual_destino:
+
+                header.moveSection(
+                    visual_atual,
+                    visual_destino
+                )
+
+        for coluna, largura in (
+            self._larguras_colunas_original.items()
+        ):
+
+            self.tabela.setColumnWidth(
+                coluna,
+                largura
+            )
+
+        for coluna in list(
+            self.colunas_fixadas
+        ):
+
+            header.setSectionResizeMode(
+                coluna,
+                QHeaderView.Interactive
+            )
+
+        self.colunas_fixadas.clear()
+
+        self.alinhamento_colunas.clear()
+
+        self.preencher(
+            self.produtos_filtrados_atual()
+        )
+
+    # ========================================================
+    # FIXAR
+    # ========================================================
+
+    def coluna_fixar(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        header = self.tabela.horizontalHeader()
+
+        largura = self.tabela.columnWidth(
+            coluna
+        )
+
+        header.setSectionResizeMode(
+            coluna,
+            QHeaderView.Fixed
+        )
+
+        self.tabela.setColumnWidth(
+            coluna,
+            largura
+        )
+
+        self.colunas_fixadas.add(
+            coluna
+        )
+
+    # ========================================================
+    # DESFIXAR
+    # ========================================================
+
+    def coluna_desfixar(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        self.tabela.horizontalHeader().setSectionResizeMode(
+            coluna,
+            QHeaderView.Interactive
+        )
+
+        self.colunas_fixadas.discard(
+            coluna
+        )
+
+    # ========================================================
+    # ORGANIZAR
+    # ========================================================
+
+    def coluna_organizar(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        self.tabela.resizeColumnToContents(
+            coluna
+        )
+
+        self.tabela.setColumnWidth(
+            coluna,
+            max(
+                40,
+                self.tabela.columnWidth(
+                    coluna
+                )
+            )
+        )
+
+    # ========================================================
+    # LOCALIZAR
+    # ========================================================
+
+    def coluna_localizar(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        if self.tabela.isColumnHidden(
+            coluna
+        ):
+
+            self.tabela.setColumnHidden(
+                coluna,
+                False
+            )
+
+        linha = self.tabela.currentRow()
+
+        if (
+            linha < 0
+            and self.tabela.rowCount() > 0
+        ):
+
+            linha = 0
+
+        if linha >= 0:
+
+            item = self.tabela.item(
+                linha,
+                coluna
+            )
+
+            if item is not None:
+
+                self.tabela.scrollToItem(
+                    item,
+                    QTableWidget.PositionAtCenter
+                )
+
+            self.tabela.setCurrentCell(
+                linha,
+                coluna
+            )
+
+    # ========================================================
+    # ALINHAMENTO
+    # ========================================================
+
+    def definir_alinhamento_coluna(
+        self,
+        coluna,
+        alinhamento
+    ):
+
+        if coluna < 0:
+            return
+
+        self.alinhamento_colunas[
+            coluna
+        ] = alinhamento
+
+        for linha in range(
+            self.tabela.rowCount()
+        ):
+
+            item = self.tabela.item(
+                linha,
+                coluna
+            )
+
+            if item is not None:
+
+                item.setTextAlignment(
+                    alinhamento
+                )
+
+            widget = self.tabela.cellWidget(
+                linha,
+                coluna
+            )
+
+            if isinstance(
+                widget,
+                QLabel
+            ):
+
+                widget.setAlignment(
+                    alinhamento
+                )
+
+    def coluna_alinhar_esquerda(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna >= 0:
+
+            self.definir_alinhamento_coluna(
+                coluna,
+                Qt.AlignLeft | Qt.AlignVCenter
+            )
+
+    def coluna_alinhar_centro(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna >= 0:
+
+            self.definir_alinhamento_coluna(
+                coluna,
+                Qt.AlignCenter
+            )
+
+    def coluna_alinhar_direita(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna >= 0:
+
+            self.definir_alinhamento_coluna(
+                coluna,
+                Qt.AlignRight | Qt.AlignVCenter
+            )
+
+    # ========================================================
+    # ORDENAÇÃO
+    # ========================================================
+
+    def coluna_ordenar(
+        self,
+        ordem
+    ):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        self.tabela.setSortingEnabled(
+            True
+        )
+
+        self.tabela.sortItems(
+            coluna,
+            ordem
+        )
+
+        self.tabela.setSortingEnabled(
+            False
+        )
+
+    def coluna_ordenar_crescente(self):
+
+        self.coluna_ordenar(
+            Qt.AscendingOrder
+        )
+
+    def coluna_ordenar_decrescente(self):
+
+        self.coluna_ordenar(
+            Qt.DescendingOrder
+        )
+
+    # ========================================================
+    # FILTRO
+    # ========================================================
+
+    def _interpretar_filtro_sequencia(self, texto):
+        """Interpreta filtros como 1-6 ou 1-6,10-15.
+
+        Retorna um set com as sequencias solicitadas quando o texto
+        inteiro estiver no formato de sequencia. Caso contrario, retorna None
+        para manter a pesquisa normal por codigo/produto/NF/chave.
+        """
+        texto = str(texto or "").strip()
+        if not texto:
+            return None
+
+        if not re.fullmatch(
+            r"\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*",
+            texto
+        ):
+            return None
+
+        sequencias = set()
+
+        try:
+            for parte in texto.split(","):
+                parte = parte.strip()
+                if "-" in parte:
+                    inicio, fim = (
+                        int(x.strip())
+                        for x in parte.split("-", 1)
+                    )
+                    if inicio > fim:
+                        inicio, fim = fim, inicio
+                    sequencias.update(range(inicio, fim + 1))
+                else:
+                    sequencias.add(int(parte))
+        except (TypeError, ValueError):
+            return None
+
+        return sequencias
+
+    def produtos_filtrados_atual(self):
+
+        texto = (
+            self.txtPesquisa.text()
+            .strip()
+            .lower()
+        )
+
+        filtro_sequencia = self._interpretar_filtro_sequencia(texto)
+
+        filtro_embalagem = (
+            self.txtEmbalagem.text()
+            .strip()
+            .lower()
+        )
+
+        somente_emb_diferente_un = (
+            self.chkEmbDiferenteUN.isChecked()
+        )
+
+        lista = []
+
+        for p in self.produtos:
+
+            if filtro_sequencia is not None:
+                seq = p.get("seq", "")
+                if seq in (None, ""):
+                    seq = p.get("nItem", "")
+
+                try:
+                    seq_num = int(float(str(seq).strip()))
+                except (TypeError, ValueError):
+                    continue
+
+                if seq_num not in filtro_sequencia:
+                    continue
+            else:
+                busca = (
+                    str(p.get("codigo", ""))
+                    + str(p.get("descricao", ""))
+                    + str(p.get("emitente", ""))
+                    + str(p.get("numero_nf", ""))
+                    + str(self.chave_nfe)
+                    + str(self.pagamento_texto)
+                ).lower()
+
+                if texto not in busca:
+                    continue
+
+            embalagem = (
+                self.obter_embalagem(
+                    p
+                ).lower()
+            )
+
+            if (
+                filtro_embalagem
+                and filtro_embalagem not in embalagem
+            ):
+                continue
+
+            unidade = str(
+                p.get(
+                    "ucom",
+                    ""
+                ) or ""
+            ).strip().upper()
+
+            if (
+                somente_emb_diferente_un
+                and unidade == "UN"
+            ):
+                continue
+
+            lista.append(
+                p
+            )
+
+        return lista
+
+    def copiar_texto_label(self, label, event=None):
+        """Copia para a area de transferencia o texto do campo clicado."""
+        texto = str(label.text() or "").strip()
+        if texto:
+            QApplication.clipboard().setText(texto)
+
+        # Mantem tambem o comportamento normal de selecao do QLabel.
+        if event is not None:
+            try:
+                QLabel.mousePressEvent(label, event)
+            except Exception:
+                pass
+
+    # ========================================================
+    # CHAVE NF-E
+    # ========================================================
+
+    def obter_chave_nfe(
+        self,
+        arquivo
+    ):
+
+        try:
+
+            tree = ET.parse(
+                arquivo
+            )
+
+            root = tree.getroot()
+
+            for elemento in root.iter():
+
+                for atributo, valor in (
+                    elemento.attrib.items()
+                ):
+
+                    if atributo.lower() == "id":
+
+                        valor = str(
+                            valor or ""
+                        ).strip()
+
+                        encontrado = re.search(
+                            r"NFe(\d{44})",
+                            valor,
+                            re.IGNORECASE
+                        )
+
+                        if encontrado:
+                            return encontrado.group(1)
+
+                        encontrado = re.search(
+                            r"\b(\d{44})\b",
+                            valor
+                        )
+
+                        if encontrado:
+                            return encontrado.group(1)
+
+            with open(
+                arquivo,
+                "r",
+                encoding="utf-8",
+                errors="ignore"
+            ) as f:
+
+                conteudo = f.read()
+
+            encontrado = re.search(
+                r"NFe(\d{44})",
+                conteudo,
+                re.IGNORECASE
+            )
+
+            if encontrado:
+                return encontrado.group(1)
+
+            encontrado = re.search(
+                r"\b(\d{44})\b",
+                conteudo
+            )
+
+            if encontrado:
+                return encontrado.group(1)
+
+        except Exception:
+            pass
+
+        return ""
+
+    # ========================================================
+    # SEQ
+    # ========================================================
+
+    def obter_seq_xml(
+        self,
+        arquivo
+    ):
+
+        sequencias = []
+
+        try:
+
+            tree = ET.parse(
+                arquivo
+            )
+
+            root = tree.getroot()
+
+            for elemento in root.iter():
+
+                nome = (
+                    elemento.tag
+                    .split("}")[-1]
+                    .lower()
+                )
+
+                if nome != "det":
+                    continue
+
+                seq = elemento.attrib.get(
+                    "nItem",
+                    ""
+                )
+
+                if not seq:
+
+                    seq = elemento.attrib.get(
+                        "seq",
+                        ""
+                    )
+
+                if seq:
+
+                    sequencias.append(
+                        str(seq).strip()
+                    )
+
+        except Exception:
+            pass
+
+        return sequencias
+
+    # ========================================================
+    # ASSOCIAR SEQ
+    # ========================================================
+
+    def associar_seq_produtos(
+        self,
+        produtos,
+        arquivo
+    ):
+
+        sequencias = self.obter_seq_xml(
+            arquivo
+        )
+
+        for indice, produto in enumerate(
+            produtos
+        ):
+
+            seq_existente = produto.get(
+                "seq",
+                ""
+            )
+
+            if seq_existente not in (
+                None,
+                ""
+            ):
+                continue
+
+            seq_existente = produto.get(
+                "nItem",
+                ""
+            )
+
+            if seq_existente not in (
+                None,
+                ""
+            ):
+
+                produto["seq"] = str(
+                    seq_existente
+                )
+
+                continue
+
+            if indice < len(
+                sequencias
+            ):
+
+                produto["seq"] = (
+                    sequencias[indice]
+                )
+
+            else:
+
+                produto["seq"] = str(
+                    indice + 1
+                )
+
+    # ========================================================
+    # PAGAMENTO
+    # ========================================================
+
+    def obter_formas_pagamento(
+        self,
+        arquivo
+    ):
+
+        formas = []
+
+        mapa_pagamento = {
+            "01": "Dinheiro",
+            "02": "Cheque",
+            "03": "Cartao de Credito",
+            "04": "Cartao de Debito",
+            "05": "Credito Loja",
+            "10": "Vale Alimentacao",
+            "11": "Vale Refeicao",
+            "12": "Vale Presente",
+            "13": "Vale Combustivel",
+            "14": "Duplicata Mercantil",
+            "15": "Boleto Bancario",
+            "16": "Deposito Bancario",
+            "17": "PIX",
+            "18": "Transferencia Bancaria",
+            "19": "Programa de Fidelidade",
+            "90": "Sem Pagamento",
+            "99": "Outros",
+        }
+
+        try:
+
+            tree = ET.parse(
+                arquivo
+            )
+
+            root = tree.getroot()
+
+            pagamentos_xml = []
+
+            for elemento in root.iter():
+
+                nome = (
+                    elemento.tag
+                    .split("}")[-1]
+                    .lower()
+                )
+
+                if nome == "detpag":
+
+                    pagamentos_xml.append(
+                        elemento
+                    )
+
+            duplicatas = []
+
+            for elemento in root.iter():
+
+                nome = (
+                    elemento.tag
+                    .split("}")[-1]
+                    .lower()
+                )
+
+                if nome == "dup":
+
+                    dados_dup = {
+                        "numero": "",
+                        "vencimento": "",
+                        "valor": "",
+                    }
+
+                    for filho in elemento:
+
+                        nome_filho = (
+                            filho.tag
+                            .split("}")[-1]
+                            .lower()
+                        )
+
+                        texto = str(
+                            filho.text or ""
+                        ).strip()
+
+                        if nome_filho == "ndup":
+
+                            dados_dup[
+                                "numero"
+                            ] = texto
+
+                        elif nome_filho == "dvenc":
+
+                            dados_dup[
+                                "vencimento"
+                            ] = texto
+
+                        elif nome_filho == "vdup":
+
+                            dados_dup[
+                                "valor"
+                            ] = texto
+
+                    duplicatas.append(
+                        dados_dup
+                    )
+
+            forma_principal = (
+                "Nao informado"
+            )
+
+            pagamentos_detalhados = []
+
+            for det_pag in pagamentos_xml:
+
+                codigo = ""
+
+                valor_pagamento = ""
+
+                for filho in det_pag:
+
+                    nome = (
+                        filho.tag
+                        .split("}")[-1]
+                        .lower()
+                    )
+
+                    texto = str(
+                        filho.text or ""
+                    ).strip()
+
+                    if nome == "tpag":
+
+                        codigo = texto
+
+                    elif nome == "vpag":
+
+                        valor_pagamento = texto
+
+                descricao = mapa_pagamento.get(
+                    codigo,
+                    (
+                        f"Codigo {codigo}"
+                        if codigo
+                        else "Nao informado"
+                    )
+                )
+
+                if forma_principal == "Nao informado":
+
+                    forma_principal = descricao
+
+                pagamentos_detalhados.append({
+                    "descricao": descricao,
+                    "valor": valor_pagamento,
+                })
+
+            if duplicatas:
+
+                total_parcelas = len(
+                    duplicatas
+                )
+
+                for indice, duplicata in enumerate(
+                    duplicatas,
+                    start=1
+                ):
+
+                    numero = duplicata.get(
+                        "numero",
+                        ""
+                    )
+
+                    if not numero:
+
+                        numero = (
+                            f"{indice:03d}"
+                        )
+
+                    vencimento = duplicata.get(
+                        "vencimento",
+                        ""
+                    )
+
+                    valor = duplicata.get(
+                        "valor",
+                        ""
+                    )
+
+                    if re.match(
+                        r"^\d{4}-\d{2}-\d{2}$",
+                        vencimento
+                    ):
+
+                        ano = vencimento[0:4]
+                        mes = vencimento[5:7]
+                        dia = vencimento[8:10]
+
+                        vencimento = (
+                            f"{dia}/{mes}/{ano}"
+                        )
+
+                    valor_formatado = ""
+
+                    if valor:
+
+                        try:
+
+                            valor_float = float(
+                                valor.replace(
+                                    ",",
+                                    "."
+                                )
+                            )
+
+                            valor_formatado = (
+                                f"R$ {valor_float:,.2f}"
+                                .replace(",", "X")
+                                .replace(".", ",")
+                                .replace("X", ".")
+                            )
+
+                        except Exception:
+
+                            valor_formatado = valor
+
+                    texto_parcela = (
+                        f"{forma_principal} - "
+                        f"Parcela "
+                        f"{numero}/"
+                        f"{total_parcelas}"
+                    )
+
+                    if vencimento:
+
+                        texto_parcela += (
+                            f" - Venc: "
+                            f"{vencimento}"
+                        )
+
+                    if valor_formatado:
+
+                        texto_parcela += (
+                            f" - "
+                            f"{valor_formatado}"
+                        )
+
+                    formas.append(
+                        texto_parcela
+                    )
+
+            elif pagamentos_detalhados:
+
+                for pagamento in (
+                    pagamentos_detalhados
+                ):
+
+                    descricao = pagamento.get(
+                        "descricao",
+                        "Nao informado"
+                    )
+
+                    valor = pagamento.get(
+                        "valor",
+                        ""
+                    )
+
+                    if valor:
+
+                        try:
+
+                            valor_float = float(
+                                valor.replace(
+                                    ",",
+                                    "."
+                                )
+                            )
+
+                            valor_formatado = (
+                                f"R$ {valor_float:,.2f}"
+                                .replace(",", "X")
+                                .replace(".", ",")
+                                .replace("X", ".")
+                            )
+
+                            descricao = (
+                                f"{descricao} - "
+                                f"{valor_formatado}"
+                            )
+
+                        except Exception:
+                            pass
+
+                    formas.append(
+                        descricao
+                    )
+
+            if not formas:
+
+                formas.append(
+                    "Nao informado"
+                )
+
+            formas_sem_duplicados = []
+
+            for forma in formas:
+
+                if forma not in (
+                    formas_sem_duplicados
+                ):
+
+                    formas_sem_duplicados.append(
+                        forma
+                    )
+
+            return formas_sem_duplicados
+
+        except Exception:
+
+            return []
+
+    # ========================================================
+    # CHAVE NA TELA
+    # ========================================================
+
+    def atualizar_chave_tela(
+        self,
+        chave
+    ):
+
+        self.chave_nfe = str(
+            chave or ""
+        )
+
+        if self.chave_nfe:
+
+            self.txtChave.setText(
+                self.chave_nfe
+            )
+
+        else:
+
+            self.txtChave.setText(
+                "Nao encontrada"
+            )
+
+    # ========================================================
+    # PAGAMENTO NA TELA
+    # ========================================================
+
+    def atualizar_pagamento_tela(
+        self,
+        formas
+    ):
+
+        self.formas_pagamento = list(
+            formas or []
+        )
+
+        if self.formas_pagamento:
+
+            self.pagamento_texto = (
+                " | ".join(
+                    self.formas_pagamento
+                )
+            )
+
+            # Mantém o texto original para mensagens e outras rotinas.
+            # Na tela, somente o valor recebe fundo vermelho e a data
+            # de vencimento recebe fundo amarelo.
+            partes_html = []
+
+            for forma in self.formas_pagamento:
+
+                texto_html = _html.escape(
+                    str(forma)
+                )
+
+                # Valor da parcela: somente "R$ ..." fica com fundo vermelho.
+                texto_html = re.sub(
+                    r"(R\$\s*[0-9.]+,[0-9]{2})",
+                    (
+                        r'<span style="background-color:#ff0000;'
+                        r' color:#ffffff; padding:2px 4px; '
+                        r'border-radius:2px; font-weight:bold;">\1</span>'
                     ),
-                    if (date != null)
-                      Text(
-                        _formatDate(
-                          date,
-                        ),
-                        style:
-                            const TextStyle(
-                          color:
-                              Colors.white54,
-                          fontSize: 12,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: _H2HTeam(
-                  team: away,
-                  alignment:
-                      CrossAxisAlignment
-                          .start,
-                ),
-              ),
-            ],
-          ),
-          if (goals.isNotEmpty) ...[
-            const SizedBox(
-              height: 14,
-            ),
-            Container(
-              width: double.infinity,
-              padding:
-                  const EdgeInsets.all(
-                12,
-              ),
-              decoration:
-                  BoxDecoration(
-                color:
-                    const Color(
-                  0xFF07130E,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  12,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
-                children: [
-                  const Text(
-                    '⚽ Gols da partida',
-                    style:
-                        TextStyle(
-                      fontWeight:
-                          FontWeight.bold,
+                    texto_html,
+                    flags=re.IGNORECASE
+                )
+
+                # Data de vencimento: somente a data fica com fundo amarelo.
+                texto_html = re.sub(
+                    r"(Venc:\s*)([0-9]{2}/[0-9]{2}/[0-9]{4})",
+                    (
+                        r'\1<span style="background-color:#ffff00;'
+                        r' color:#000000; padding:2px 4px; '
+                        r'border-radius:2px; font-weight:bold;">\2</span>'
                     ),
-                  ),
-                  const SizedBox(
-                    height: 8,
-                  ),
-                  ...goals.map(
-                    (goal) => Padding(
-                      padding:
-                          const EdgeInsets
-                              .only(
-                        bottom: 5,
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            "⚽ ${goal.minute}'",
-                            style:
-                                const TextStyle(
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(
-                            width: 8,
-                          ),
-                          Expanded(
-                            child: Text(
-                              goal.player,
-                            ),
-                          ),
-                          if (goal.team !=
-                              null)
-                            Text(
-                              goal.team!,
-                              style:
-                                  const TextStyle(
-                                color:
-                                    Colors.white54,
-                                fontSize:
-                                    11,
-                              ),
-                            ),
-                        ],
-                      ),
+                    texto_html,
+                    flags=re.IGNORECASE
+                )
+
+                partes_html.append(
+                    texto_html
+                )
+
+            self.txtPagamento.setText(
+                " <span style=\"color:#555555;\">|</span> ".join(
+                    partes_html
+                )
+            )
+
+        else:
+
+            self.pagamento_texto = ""
+
+            self.txtPagamento.setText(
+                "Nao informado"
+            )
+
+    # ========================================================
+    # PDF -> XML
+    # ========================================================
+
+    def abrir_pdf(self):
+
+        arquivo, _ = QFileDialog.getOpenFileName(
+            self,
+            "Selecionar PDF ou XML",
+            "",
+            "Arquivos PDF ou XML (*.pdf *.xml);;"
+            "Arquivos PDF (*.pdf);;"
+            "Arquivos XML (*.xml)"
+        )
+
+        if not arquivo:
+            return
+
+        try:
+
+            extensao = os.path.splitext(
+                arquivo
+            )[1].lower()
+
+            if extensao == ".xml":
+
+                self.btAbrir.setEnabled(
+                    False
+                )
+
+                self.btAbrir.setText(
+                    "Lendo XML..."
+                )
+
+                QApplication.processEvents()
+
+                self.carregar_xml(
+                    arquivo,
+                    mostrar_sucesso=False
+                )
+
+                return
+
+            if extensao == ".pdf":
+
+                # Acrescenta o nome usado no proprio arquivo PDF.
+                # Ex.: "DALLAS.pdf" -> "FORN: DALLAS".
+                # O fornecedor vindo do XML continua intacto.
+                nome_fornecedor_pdf = os.path.splitext(
+                    os.path.basename(arquivo)
+                )[0].strip()
+
+                self.lblFornArquivo.setText(
+                    f"FORN: {nome_fornecedor_pdf}"
+                )
+
+                self.btAbrir.setEnabled(
+                    False
+                )
+
+                self.btAbrir.setText(
+                    "Baixando XML..."
+                )
+
+                QApplication.processEvents()
+
+                caminho_xml = baixar_xml_do_pdf(
+                    arquivo
+                )
+
+                if not caminho_xml:
+                    raise Exception(
+                        "A rotina nao retornou o caminho do XML."
+                    )
+
+                if not os.path.exists(
+                    caminho_xml
+                ):
+                    raise Exception(
+                        "O XML foi baixado, mas o arquivo nao foi encontrado."
+                    )
+
+                self.btAbrir.setText(
+                    "Lendo XML..."
+                )
+
+                QApplication.processEvents()
+
+                self.carregar_xml(
+                    caminho_xml,
+                    mostrar_sucesso=True
+                )
+
+                return
+
+            raise Exception(
+                "Selecione um arquivo PDF ou XML."
+            )
+
+        except Exception as erro:
+
+            QMessageBox.critical(
+                self,
+                "Erro",
+                str(erro)
+            )
+
+        finally:
+
+            self.btAbrir.setEnabled(
+                True
+            )
+
+            self.btAbrir.setText(
+                "Abrir PDF / Baixar XML"
+            )
+
+    # ========================================================
+    # ABRIR XML
+    # ========================================================
+
+    def abrir_xml(self):
+
+        arquivo, _ = QFileDialog.getOpenFileName(
+            self,
+            "Abrir XML",
+            "",
+            "Arquivos XML (*.xml)"
+        )
+
+        if not arquivo:
+            return
+
+        self.carregar_xml(
+            arquivo
+        )
+
+    # ========================================================
+    # CARREGAR XML
+    # ========================================================
+
+    def carregar_xml(
+        self,
+        arquivo,
+        mostrar_sucesso=False
+    ):
+
+        try:
+
+            leitor = LeitorXML(
+                arquivo
+            )
+
+            nota = leitor.ler()
+
+            self.produtos = nota[
+                "produtos"
+            ]
+
+            self.associar_seq_produtos(
+                self.produtos,
+                arquivo
+            )
+
+            chave = self.obter_chave_nfe(
+                arquivo
+            )
+
+            self.atualizar_chave_tela(
+                chave
+            )
+
+            formas_pagamento = (
+                self.obter_formas_pagamento(
+                    arquivo
+                )
+            )
+
+            self.atualizar_pagamento_tela(
+                formas_pagamento
+            )
+
+            self.lblFornecedor.setText(
+                f"Fornecedor: "
+                f"{nota['emitente']}"
+            )
+
+            self.lblNF.setText(
+                f"NF: "
+                f"{nota['numero']}"
+            )
+
+            self.atualizar_resumo()
+
+            self.filtrar()
+
+            if mostrar_sucesso:
+
+                chave_texto = (
+                    self.chave_nfe
+                    if self.chave_nfe
+                    else "Nao encontrada"
+                )
+
+                pagamento_texto = (
+                    self.pagamento_texto
+                    if self.pagamento_texto
+                    else "Nao informado"
+                )
+
+                QMessageBox.information(
+                    self,
+                    "XML baixado",
+                    (
+                        "NF-e carregada com sucesso!\n\n"
+                        f"Fornecedor: "
+                        f"{nota['emitente']}\n"
+                        f"NF: "
+                        f"{nota['numero']}\n"
+                        f"Chave NF-e: "
+                        f"{chave_texto}\n"
+                        f"Forma de Pagamento: "
+                        f"{pagamento_texto}\n"
+                        f"Produtos: "
+                        f"{len(self.produtos)}\n\n"
+                        f"XML salvo em:\n"
+                        f"{arquivo}"
+                    )
+                )
+
+        except Exception as erro:
+
+            QMessageBox.critical(
+                self,
+                "Erro",
+                str(erro)
+            )
+
+    # ========================================================
+    # ABRIR PASTA XML
+    # ========================================================
+
+    def abrir_pasta(self):
+
+        pasta = QFileDialog.getExistingDirectory(
+            self,
+            "Selecionar pasta com XML"
+        )
+
+        if not pasta:
+            return
+
+        produtos = []
+
+        total_xml = 0
+
+        chaves = []
+
+        pagamentos = []
+
+        for arquivo in os.listdir(
+            pasta
+        ):
+
+            if not arquivo.lower().endswith(
+                ".xml"
+            ):
+                continue
+
+            caminho = os.path.join(
+                pasta,
+                arquivo
+            )
+
+            try:
+
+                leitor = LeitorXML(
+                    caminho
+                )
+
+                nota = leitor.ler()
+
+                produtos_nota = nota[
+                    "produtos"
+                ]
+
+                self.associar_seq_produtos(
+                    produtos_nota,
+                    caminho
+                )
+
+                produtos.extend(
+                    produtos_nota
+                )
+
+                chave = self.obter_chave_nfe(
+                    caminho
+                )
+
+                if chave:
+
+                    chaves.append(
+                        chave
+                    )
+
+                formas = (
+                    self.obter_formas_pagamento(
+                        caminho
+                    )
+                )
+
+                pagamentos.extend(
+                    formas
+                )
+
+                total_xml += 1
+
+            except Exception:
+                pass
+
+        if not produtos:
+
+            QMessageBox.warning(
+                self,
+                "Aviso",
+                "Nenhum produto encontrado."
+            )
+
+            return
+
+        self.produtos = produtos
+
+        self.lblFornecedor.setText(
+            "Fornecedor: Varios"
+        )
+
+        self.lblNF.setText(
+            f"XML processados: "
+            f"{total_xml}"
+        )
+
+        if len(chaves) == 1:
+
+            self.atualizar_chave_tela(
+                chaves[0]
+            )
+
+        elif len(chaves) > 1:
+
+            self.chave_nfe = ""
+
+            self.txtChave.setText(
+                f"{len(chaves)} notas carregadas"
+            )
+
+        else:
+
+            self.atualizar_chave_tela(
+                ""
+            )
+
+        pagamentos_sem_duplicados = []
+
+        for pagamento in pagamentos:
+
+            if pagamento not in (
+                pagamentos_sem_duplicados
+            ):
+
+                pagamentos_sem_duplicados.append(
+                    pagamento
+                )
+
+        self.atualizar_pagamento_tela(
+            pagamentos_sem_duplicados
+        )
+
+        self.atualizar_resumo()
+
+        self.filtrar()
+
+    # ========================================================
+    # RESUMO
+    # ========================================================
+
+    def atualizar_resumo(self):
+
+        total = len(
+            self.produtos
+        )
+
+        self.lblQtd.setText(
+            f"Produtos: {total}"
+        )
+
+    # ========================================================
+    # EMBALAGEM
+    # ========================================================
+
+    def obter_embalagem(
+        self,
+        produto
+    ):
+
+        qcom = float(
+            produto.get(
+                "qcom",
+                0
+            ) or 0
+        )
+
+        ucom = str(
+            produto.get(
+                "ucom",
+                ""
+            ) or ""
+        ).strip()
+
+        return (
+            f"{qcom:g} {ucom}"
+        ).strip()
+
+    # ========================================================
+    # FILTRO
+    # ========================================================
+
+    def filtrar(self):
+
+        lista = (
+            self.produtos_filtrados_atual()
+        )
+
+        self.preencher(
+            lista
+        )
+
+    # ========================================================
+    # MULTIPLICADOR
+    # ========================================================
+
+    def calcular_multiplicador(
+        self,
+        descricao,
+        compra
+    ):
+
+        descricao = str(
+            descricao or ""
+        )
+
+        compra = str(
+            compra or ""
+        )
+
+        if re.search(
+            r"\bUN\b",
+            compra,
+            re.IGNORECASE
+        ):
+
+            return 1
+
+        encontrados_x = re.findall(
+            r'(\d+(?:[.,]\d+)?)\s*[Xx]\s*'
+            r'\d+(?:[.,]\d+)?',
+            descricao,
+            re.IGNORECASE
+        )
+
+        if encontrados_x:
+
+            return float(
+                encontrados_x[0].replace(
+                    ",",
+                    "."
+                )
+            )
+
+        encontrados_cx = re.findall(
+            r'\b(?:CX|CAIXA)\s*'
+            r'(\d+(?:[.,]\d+)?)\b',
+            descricao,
+            re.IGNORECASE
+        )
+
+        if encontrados_cx:
+
+            return float(
+                encontrados_cx[0].replace(
+                    ",",
+                    "."
+                )
+            )
+
+        return 1
+
+    # ========================================================
+    # FORMATAR DESCRIÇÃO
+    # ========================================================
+
+    def formatar_descricao(
+        self,
+        descricao
+    ):
+
+        descricao = str(
+            descricao or ""
+        )
+
+        padrao = re.compile(
+            r'(\d+(?:[.,]\d+)?\s*[Xx]\s*'
+            r'\d+(?:[.,]\d+)?|'
+            r'\b(?:CX|CAIXA)\s*'
+            r'\d+(?:[.,]\d+)?)',
+            re.IGNORECASE
+        )
+
+        partes = padrao.split(
+            descricao
+        )
+
+        texto_formatado = ""
+
+        for parte in partes:
+
+            if not parte:
+                continue
+
+            if padrao.fullmatch(
+                parte
+            ):
+
+                texto_formatado += (
+                    '<span style="'
+                    'color: blue; '
+                    'font-weight: bold;">'
+                    + parte
+                    + '</span>'
+                )
+
+            else:
+
+                texto_formatado += (
+                    parte
+                    .replace(
+                        "&",
+                        "&amp;"
+                    )
+                    .replace(
+                        "<",
+                        "&lt;"
+                    )
+                    .replace(
+                        ">",
+                        "&gt;"
+                    )
+                )
+
+        return texto_formatado
+
+    # ========================================================
+    # VALOR UNITÁRIO XML
+    # ========================================================
+
+    def obter_valor_un_xml(
+        self,
+        produto
+    ):
+
+        valor = produto.get(
+            "valor_unitario_xml"
+        )
+
+        if valor in (
+            None,
+            ""
+        ):
+
+            valor = produto.get(
+                "valor_un"
+            )
+
+        if valor in (
+            None,
+            ""
+        ):
+
+            valor = produto.get(
+                "valor_unitario"
+            )
+
+        if valor in (
+            None,
+            ""
+        ):
+
+            valor = produto.get(
+                "vUnCom"
+            )
+
+        if valor in (
+            None,
+            ""
+        ):
+
+            valor = produto.get(
+                "vUnTrib"
+            )
+
+        try:
+
+            return float(
+                str(
+                    valor or 0
+                ).replace(
+                    ",",
+                    "."
+                )
+            )
+
+        except Exception:
+
+            return 0
+
+    # ========================================================
+    # CALCULO
+    # ========================================================
+
+    def calcular_valor_dividido_valor_un_xml(
+        self,
+        valor,
+        valor_un_xml
+    ):
+
+        try:
+
+            valor = float(
+                valor or 0
+            )
+
+            valor_un_xml = float(
+                valor_un_xml or 0
+            )
+
+            if valor_un_xml == 0:
+
+                return 0
+
+            return (
+                valor
+                /
+                valor_un_xml
+            )
+
+        except Exception:
+
+            return 0
+
+    # ========================================================
+    # EMBALAGEM - BASE LOCAL
+    # ========================================================
+
+    def obter_texto_qtd_embalagem(self, ean, embalagem=""):
+        ean = _normalizar_ean(ean)
+        if not ean:
+            return ""
+
+        # Primeiro verifica a base local para TODOS os EANs.
+        # Isso evita ignorar um GTIN de caixa só porque o XML informou UN.
+        dados = obter_embalagem_local(
+            self._base_embalagens,
+            ean
+        )
+
+        if dados:
+            return str(dados["quantidade"])
+
+        # Sem cadastro local, não assume que UN = 1.
+        # A quantidade da caixa deve ser obtida pela pesquisa do EAN.
+        return "Não cadastrado"
+
+    def iniciar_pesquisa_qtd_embalagem(self, ean):
+        ean = _normalizar_ean(ean)
+        if not ean:
+            return
+
+        for worker in self._workers_qtd_embalagem:
+            if getattr(worker, "ean", "") == ean:
+                return
+
+        self._iniciar_worker_qtd_embalagem(ean)
+
+    def _remover_worker_qtd_embalagem(self, worker):
+        try:
+            self._workers_qtd_embalagem.remove(worker)
+        except ValueError:
+            pass
+
+    def pesquisar_ean_selecionado(self):
+        linha = self.tabela.currentRow()
+        if linha < 0:
+            QMessageBox.information(
+                self,
+                "Pesquisar EAN",
+                "Selecione uma linha da tabela primeiro."
+            )
+            return
+
+        item_ean = self.tabela.item(linha, 15)
+        if item_ean is None:
+            QMessageBox.information(
+                self,
+                "Pesquisar EAN",
+                "A linha selecionada não possui EAN."
+            )
+            return
+
+        ean = _normalizar_ean(item_ean.text())
+        if not ean:
+            QMessageBox.information(
+                self,
+                "Pesquisar EAN",
+                "A linha selecionada não possui um EAN válido."
+            )
+            return
+
+        if ean in self._pesquisa_lote_pendentes:
+            return
+
+        item = self.tabela.item(linha, 9)
+        if item is None:
+            item = QTableWidgetItem()
+            self.tabela.setItem(linha, 9, item)
+        item.setText("Pesquisando...")
+
+        self.btPesquisarEAN.setEnabled(False)
+        self.btPesquisarEAN.setText("Pesquisando...")
+        self.iniciar_pesquisa_qtd_embalagem(ean)
+
+    def pesquisar_eans_nao_cadastrados(self):
+        """Pesquisa em paralelo somente os EANs ainda não cadastrados."""
+        if self._pesquisa_lote_ativa:
+            return
+
+        eans = []
+        vistos = set()
+
+        for linha in range(self.tabela.rowCount()):
+            # Coluna 15 = Cod Barras XML.
+            item_ean = self.tabela.item(linha, 15)
+            item_qtd = self.tabela.item(linha, 9)
+            if item_ean is None:
+                continue
+
+            ean = _normalizar_ean(item_ean.text())
+            if not ean or ean in vistos:
+                continue
+
+            texto_qtd = item_qtd.text().strip().lower() if item_qtd else ""
+            embalagem = self.tabela.item(linha, 7)
+            emb = embalagem.text().strip().upper() if embalagem else ""
+
+            # Se já existe um resultado salvo localmente, não pesquisa novamente.
+            if obter_embalagem_local(self._base_embalagens, ean):
+                continue
+
+            # UN é tratado como 1 durante o preenchimento da tabela.
+            # Não enviamos UN para pesquisa automática em lote para evitar
+            # transformar uma unidade simples em um resultado incerto.
+            if emb in ("UN", "UND", "UNID", "UNIDADE") and texto_qtd == "1":
+                continue
+
+            if texto_qtd not in ("não cadastrado", "nao cadastrado", "não encontrado", "nao encontrado", "", "consultando..."):
+                continue
+
+            vistos.add(ean)
+            eans.append(ean)
+
+        if not eans:
+            QMessageBox.information(
+                self,
+                "Pesquisa de EANs",
+                "Não há EANs não cadastrados para pesquisar."
+            )
+            return
+
+        self._pesquisa_lote_ativa = True
+        self._pesquisa_lote_pendentes = set(eans)
+        self._pesquisa_lote_total = len(eans)
+        self._pesquisa_lote_concluidos = 0
+
+        self.btPesquisarEAN.setEnabled(False)
+        self.btPesquisarNaoCadastrados.setEnabled(False)
+        self.btPesquisarNaoCadastrados.setText(
+            f"Pesquisando 0/{len(eans)}..."
+        )
+
+        for linha in range(self.tabela.rowCount()):
+            # Coluna 15 = Cod Barras XML.
+            item_ean = self.tabela.item(linha, 15)
+            if item_ean is None:
+                continue
+            ean = _normalizar_ean(item_ean.text())
+            if ean in self._pesquisa_lote_pendentes:
+                item = self.tabela.item(linha, 9)
+                if item is None:
+                    item = QTableWidgetItem()
+                    self.tabela.setItem(linha, 9, item)
+                item.setText("Pesquisando...")
+
+        # O QThreadPool usa os workers simultaneamente.
+        # Limitar a 8 evita sobrecarregar a internet.
+        self._pool_qtd_embalagem.setMaxThreadCount(8)
+        for ean in eans:
+            self._iniciar_worker_qtd_embalagem(ean)
+
+    def pesquisar_qtd_embalagem_automaticamente(self):
+        """Pesquisa automaticamente a quantidade por embalagem de cada EAN.
+
+        Esta rotina mexe somente na coluna Qtd/Emb. (9). A coluna QUANT (8)
+        permanece exclusivamente com qCom/qTrib do XML.
+        """
+        eans = set()
+
+        for linha in range(self.tabela.rowCount()):
+            item_ean = self.tabela.item(linha, 15)
+            if item_ean is None:
+                continue
+
+            ean = _normalizar_ean(item_ean.text())
+            if not ean:
+                continue
+
+            # Se já temos a informação na base local, preencherá pela rotina
+            # normal e não há necessidade de consultar a internet.
+            if obter_embalagem_local(self._base_embalagens, ean):
+                continue
+
+            item_qtd_emb = self.tabela.item(linha, 9)
+            texto = item_qtd_emb.text().strip().lower() if item_qtd_emb else ""
+            if texto not in (
+                "",
+                "não cadastrado",
+                "nao cadastrado",
+                "não encontrado",
+                "nao encontrado",
+            ):
+                continue
+
+            eans.add(ean)
+
+        for ean in eans:
+            for linha in range(self.tabela.rowCount()):
+                item_ean = self.tabela.item(linha, 15)
+                if item_ean is None or _normalizar_ean(item_ean.text()) != ean:
+                    continue
+
+                item = self.tabela.item(linha, 9)
+                if item is None:
+                    item = QTableWidgetItem()
+                    self.tabela.setItem(linha, 9, item)
+                item.setText("Pesquisando...")
+                item.setToolTip("Pesquisando a quantidade por embalagem pelo EAN...")
+                item.setTextAlignment(
+                    Qt.AlignmentFlag(
+                        int(
+                            self.alinhamento_colunas.get(
+                                9, Qt.AlignLeft | Qt.AlignVCenter
+                            )
+                        )
+                    )
+                )
+
+            self.iniciar_pesquisa_qtd_embalagem(ean)
+
+    def _iniciar_worker_qtd_embalagem(self, ean):
+        worker = _PesquisaEmbalagemWorker(ean)
+        worker.sinais.resultado.connect(
+            self.receber_resultado_qtd_embalagem
+        )
+        worker.sinais.resultado.connect(
+            lambda *_args, w=worker: self._remover_worker_qtd_embalagem(w)
+        )
+        self._workers_qtd_embalagem.append(worker)
+        self._pool_qtd_embalagem.start(worker)
+
+    def receber_resultado_qtd_embalagem(self, ean, fator, fonte):
+        ean = _normalizar_ean(ean)
+
+        if fator:
+            self._base_embalagens[ean] = {
+                "quantidade": int(fator),
+                "fonte": fonte or "Pesquisa web",
+                "ean_master": _calcular_dun14(ean, 2) or ""
+            }
+            salvar_base_embalagens(self._base_embalagens)
+
+        for linha in range(self.tabela.rowCount()):
+            item_ean = self.tabela.item(linha, 15)
+            if item_ean is None:
+                continue
+            if _normalizar_ean(item_ean.text()) != ean:
+                continue
+
+            # Coluna 9 = Qtd/Emb.
+            # A coluna 8 (QUANT) permanece com qCom/qTrib do XML.
+            item = self.tabela.item(linha, 9)
+            if item is None:
+                item = QTableWidgetItem()
+                self.tabela.setItem(linha, 9, item)
+
+            if fator:
+                item.setText(str(fator))
+                item.setToolTip(
+                    "Quantidade por embalagem.\n"
+                    "Fonte: {}\n"
+                    "EAN: {}".format(fonte or "Pesquisa web", ean)
+                )
+            else:
+                item.setText("Não cadastrado")
+                item.setToolTip(
+                    "Não foi encontrada uma quantidade confiável.\n"
+                    "Use a pesquisa novamente quando necessário."
+                )
+
+            item.setTextAlignment(
+                Qt.AlignmentFlag(
+                    int(
+                        self.alinhamento_colunas.get(
+                            9,
+                            Qt.AlignLeft | Qt.AlignVCenter
+                        )
+                    )
+                )
+            )
+
+        # Se estamos fazendo pesquisa em lote, atualiza o progresso.
+        if self._pesquisa_lote_ativa and ean in self._pesquisa_lote_pendentes:
+            self._pesquisa_lote_pendentes.discard(ean)
+            self._pesquisa_lote_concluidos += 1
+            self.btPesquisarNaoCadastrados.setText(
+                f"Pesquisando {self._pesquisa_lote_concluidos}/{self._pesquisa_lote_total}..."
+            )
+
+            if not self._pesquisa_lote_pendentes:
+                self._pesquisa_lote_ativa = False
+                self.btPesquisarNaoCadastrados.setEnabled(True)
+                self.btPesquisarNaoCadastrados.setText(
+                    "Pesquisar não cadastrados"
+                )
+                self.btPesquisarEAN.setEnabled(True)
+                self.btPesquisarEAN.setText("Pesquisar EAN")
+                QApplication.processEvents()
+                QMessageBox.information(
+                    self,
+                    "Pesquisa concluída",
+                    (
+                        f"Pesquisa concluída.\n\n"
+                        f"EANs pesquisados: {self._pesquisa_lote_total}\n"
+                        f"A base local foi atualizada."
+                    )
+                )
+            return
+
+        # Pesquisa individual.
+        self.btPesquisarEAN.setEnabled(True)
+        self.btPesquisarEAN.setText("Pesquisar EAN")
+
+    # ========================================================
+    # PREENCHER TABELA
+    # ========================================================
+
+    def preencher(
+        self,
+        produtos
+    ):
+
+        # As linhas da tabela serão reconstruídas, então as marcações
+        # antigas não podem ser reaproveitadas em outras linhas.
+        self.limpar_selecoes_manuais()
+        self.tabela.clearSelection()
+
+        self.tabela.setRowCount(
+            len(produtos)
+        )
+
+        for linha, p in enumerate(
+            produtos
+        ):
+
+            qcom = float(
+                p.get(
+                    "qcom",
+                    0
+                ) or 0
+            )
+
+            qtrib = float(
+                p.get(
+                    "qtrib",
+                    0
+                ) or 0
+            )
+
+            ucom = str(
+                p.get(
+                    "ucom",
+                    ""
+                ) or ""
+            )
+
+            compra = (
+                f"{qcom:g} "
+                f"{ucom}"
+            )
+
+            multiplicador = (
+                self.calcular_multiplicador(
+                    p.get(
+                        "descricao",
+                        ""
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
+                    compra
+                )
+            )
 
-class _H2HTeam
-    extends StatelessWidget {
-  final TeamInfo team;
-  final CrossAxisAlignment alignment;
+            qtd_ajustada = (
+                qcom
+                *
+                multiplicador
+            )
 
-  const _H2HTeam({
-    required this.team,
-    required this.alignment,
-  });
+            preco_compra = float(
+                p.get(
+                    "preco_compra",
+                    0
+                ) or 0
+            )
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment:
-          alignment,
-      children: [
-        ClubShield(
-          team: team,
-          size: 40,
-        ),
-        const SizedBox(
-          height: 5,
-        ),
-        Text(
-          team.name,
-          textAlign:
-              TextAlign.center,
-          maxLines: 2,
-          overflow:
-              TextOverflow.ellipsis,
-          style:
-              const TextStyle(
-            fontSize: 13,
-            fontWeight:
-                FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
-}
+            quantidade_ultima_entrada = float(
+                p.get(
+                    "quantidade_ultima_entrada",
+                    0
+                ) or 0
+            )
 
-// ============================================================
-// UTILITÁRIOS
-// ============================================================
+            preco_ultima_compra_unit = float(
+                p.get(
+                    "preco_ultima_compra_unit",
+                    0
+                ) or 0
+            )
 
-bool _isScheduledStatus(
-  String status,
-) {
-  final s =
-      status.toLowerCase();
+            valor = float(
+                p.get(
+                    "valor",
+                    0
+                ) or 0
+            )
 
-  return s.contains('scheduled') ||
-      s.contains('not_started') ||
-      s.contains('ns') ||
-      s.contains('upcoming');
-}
+            valor_un_xml = (
+                self.obter_valor_un_xml(
+                    p
+                )
+            )
 
-String _detailStatus(
-  String status,
-) {
-  if (_isScheduledStatus(status)) {
-    return 'A iniciar';
-  }
+            valor_dividido = (
+                self.calcular_valor_dividido_valor_un_xml(
+                    valor,
+                    valor_un_xml
+                )
+            )
 
-  final s =
-      status.toLowerCase();
+            seq = p.get(
+                "seq",
+                ""
+            )
 
-  if (s.contains('finished') ||
-      s.contains('ft') ||
-      s.contains('ended')) {
-    return 'Finalizado';
-  }
+            if seq in (
+                None,
+                ""
+            ):
 
-  if (s.contains('halftime') ||
-      s.contains('ht')) {
-    return 'Intervalo';
-  }
+                seq = p.get(
+                    "nItem",
+                    ""
+                )
 
-  if (s.contains('live') ||
-      s.contains('inplay') ||
-      s.contains('1h') ||
-      s.contains('2h')) {
-    return 'Ao vivo';
-  }
+            dados = [
 
-  return status;
-}
+                p.get(
+                    "codigo_erp",
+                    ""
+                ),
 
-String _statusLabel(
-  LiveMatch match,
-) {
-  if (match.isFinished) {
-    return 'FINAL';
-  }
+                p.get(
+                    "descricao_erp",
+                    ""
+                ),
 
-  if (match.isLive) {
-    return match.minute != null
-        ? "${match.minute}'"
-        : 'AO VIVO';
-  }
+                f"R$ {preco_compra:.2f}",
 
-  if (match.startTime != null) {
-    return _formatTime(
-      match.startTime!,
-    );
-  }
+                f"{quantidade_ultima_entrada:g}",
 
-  return 'A iniciar';
-}
+                f"R$ {preco_ultima_compra_unit:.2f}",
+                
+                f"R$ {preco_ultima_compra_ant:.2f}",
+                
+                data_ultima_compra,
 
-String _dateLabel(
-  DateTime date,
-) {
-  final now = DateTime.now();
+                p.get(
+                    "codigo",
+                    ""
+                ),
 
-  final today = DateTime(
-    now.year,
-    now.month,
-    now.day,
-  );
+                p.get(
+                    "descricao",
+                    ""
+                ),
 
-  final target = DateTime(
-    date.year,
-    date.month,
-    date.day,
-  );
+                compra,
 
-  final diff =
-      target.difference(today).inDays;
+                f"{qcom:g}\n{qtrib:g}",
 
-  if (diff == 0) {
-    return 'Hoje';
-  }
+                self.obter_texto_qtd_embalagem(
+                    p.get("codigo_barras", ""),
+                    ucom
+                ),
 
-  if (diff == 1) {
-    return 'Amanhã';
-  }
+                f"{qtd_ajustada:g}",
 
-  if (diff == -1) {
-    return 'Ontem';
-  }
+                seq,
 
-  return _formatDate(date);
-}
+                f"R$ {valor:.2f}",
 
-String _formatTime(
-  DateTime date,
-) {
-  final h =
-      date.hour.toString().padLeft(
-        2,
-        '0',
-      );
+                f"R$ {valor_un_xml:.4f}",
 
-  final m =
-      date.minute.toString().padLeft(
-        2,
-        '0',
-      );
+                f"{valor_dividido:.4f}",
 
-  return '$h:$m';
-}
+                p.get(
+                    "codigo_barras",
+                    ""
+                ),
+            ]
 
-String _formatDate(
-  DateTime date,
-) {
-  final d =
-      date.day.toString().padLeft(
-        2,
-        '0',
-      );
+            for coluna, texto in enumerate(
+                dados
+            ):
 
-  final m =
-      date.month.toString().padLeft(
-        2,
-        '0',
-      );
+                if coluna == 6:
 
-  return '$d/$m/${date.year}';
-}
+                    texto_formatado = (
+                        self.formatar_descricao(
+                            texto
+                        )
+                    )
 
-String _formatDateTime(
-  DateTime date,
-) {
-  return '${_formatDate(date)} às ${_formatTime(date)}';
-}
+                    label = QLabel(
+                        texto_formatado
+                    )
+
+                    label.setTextFormat(
+                        Qt.RichText
+                    )
+
+                    label.setWordWrap(
+                        False
+                    )
+
+                    # A QLabel deve se comportar como parte da célula
+                    # normal da tabela. Ela não pode capturar o clique nem
+                    # pintar um azul próprio por cima da seleção do QTableWidget.
+                    label.setFocusPolicy(
+                        Qt.NoFocus
+                    )
+                    label.setAttribute(
+                        Qt.WA_TransparentForMouseEvents,
+                        True
+                    )
+
+                    label.setStyleSheet(
+                        """
+                        QLabel {
+                            background-color: transparent;
+                            color: black;
+                            padding: 2px;
+                        }
+                        """
+                    )
+
+                    label.setAlignment(
+                        Qt.AlignmentFlag(
+                            int(
+                                self.alinhamento_colunas.get(
+                                    coluna,
+                                    Qt.AlignLeft
+                                    | Qt.AlignVCenter
+                                )
+                            )
+                        )
+                    )
+
+                    self.tabela.setCellWidget(
+                        linha,
+                        coluna,
+                        label
+                    )
+
+                    continue
+
+                item = QTableWidgetItem(
+                    str(texto)
+                )
+
+                item.setForeground(
+                    QColor(
+                        0,
+                        0,
+                        0
+                    )
+                )
+
+                item.setBackground(
+                    QColor(
+                        255,
+                        255,
+                        255
+                    )
+                )
+
+                item.setTextAlignment(
+                    Qt.AlignmentFlag(
+                        int(
+                            self.alinhamento_colunas.get(
+                                coluna,
+                                Qt.AlignLeft
+                                | Qt.AlignVCenter
+                            )
+                        )
+                    )
+                )
+
+                if coluna == 4:
+
+                    item.setBackground(
+                        QColor(
+                            255,
+                            150,
+                            150
+                        )
+                    )
+
+                if coluna == 10:
+
+                    # MULT: azul claro
+                    item.setBackground(
+                        QColor(
+                            173,
+                            216,
+                            230
+                        )
+                    )
+
+                if coluna == 14:
+
+                    item.setBackground(
+                        QColor(
+                            255,
+                            150,
+                            150
+                        )
+                    )
+
+                self.tabela.setItem(
+                    linha,
+                    coluna,
+                    item
+                )
+
+            # QUANT (coluna 8) mostra qCom e qTrib em duas linhas.
+            self.tabela.setRowHeight(
+                linha,
+                max(40, self.tabela.rowHeight(linha))
+            )
+
+        # Pesquisa automaticamente somente a Qtd/Emb. pelo EAN.
+        # A coluna QUANT (8) permanece intacta.
+        self.pesquisar_qtd_embalagem_automaticamente()
+
+
+# ============================================================
+# INICIALIZAÇÃO
+# ============================================================
+
+def main():
+
+    app = QApplication(
+        sys.argv
+    )
+
+    # ========================================================
+    # PRIMEIRA TELA:
+    # SENHA
+    # ========================================================
+
+    tela_senha = TelaSenha()
+
+    tela_senha.show()
+
+    # ========================================================
+    # O PROGRAMA SÓ TERMINA QUANDO A APLICAÇÃO FOR FECHADA
+    # ========================================================
+
+    sys.exit(
+        app.exec()
+    )
+
+
+# ============================================================
+# EXECUTAR
+# ============================================================
+
+if __name__ == "__main__":
+
+    main()
