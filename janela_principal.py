@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QFormLayout,
     QGroupBox,
+    QColorDialog,
 )
 
 from leitor_xml import LeitorXML
@@ -2175,8 +2176,11 @@ class Janela(QMainWindow):
 
         self.alinhamento_colunas = {}
 
+        # Cores personalizadas ficam vinculadas ao NOME da coluna.
+        self.cores_colunas = {}
+
         self._ordem_colunas_original = list(
-            range(16)
+            range(18)
         )
 
         self._larguras_colunas_original = {}
@@ -2836,6 +2840,12 @@ class Janela(QMainWindow):
 
                 alinhamentos[str(coluna)] = int(alinhamento)
 
+            cores = {}
+
+            for nome_coluna, cor in self.cores_colunas.items():
+                if isinstance(cor, QColor) and cor.isValid():
+                    cores[str(nome_coluna)] = cor.name()
+
             configuracao = {
                 "versao": VERSAO_CONFIG_TABELA,
                 "ordem": ordem,
@@ -2843,6 +2853,7 @@ class Janela(QMainWindow):
                 "ocultas": ocultas,
                 "fixadas": fixadas,
                 "alinhamentos": alinhamentos,
+                "cores": cores,
             }
 
             with open(
@@ -2993,6 +3004,23 @@ class Janela(QMainWindow):
                         Qt.AlignmentFlag(int(alinhamento))
                     )
 
+            self.cores_colunas.clear()
+
+            cores = configuracao.get("cores", {})
+
+            if isinstance(cores, dict):
+
+                for nome_coluna, valor_cor in cores.items():
+
+                    try:
+                        cor = QColor(str(valor_cor))
+
+                        if cor.isValid():
+                            self.cores_colunas[str(nome_coluna)] = cor
+
+                    except Exception:
+                        pass
+
             fixadas = configuracao.get("fixadas", [])
 
             self.colunas_fixadas.clear()
@@ -3139,15 +3167,14 @@ class Janela(QMainWindow):
         ):
             return
 
-        cor = QColor(
-            255,
-            165,
-            0
-        ) if selecionada else QColor(
-            255,
-            255,
-            255
-        )
+        if selecionada:
+            cor = QColor(255, 165, 0)
+        else:
+            nome_coluna = self.obter_nome_coluna(coluna)
+            cor = self.cores_colunas.get(
+                nome_coluna,
+                QColor(255, 255, 255)
+            )
 
         item = self.tabela.item(
             linha,
@@ -3275,6 +3302,173 @@ class Janela(QMainWindow):
         return acao
 
     # ========================================================
+    # COR DA COLUNA
+    # ========================================================
+
+    def obter_nome_coluna(self, coluna):
+
+        if (
+            coluna < 0
+            or coluna >= self.tabela.columnCount()
+        ):
+            return ""
+
+        item = self.tabela.horizontalHeaderItem(coluna)
+
+        return str(item.text()) if item is not None else ""
+
+
+    def aplicar_cor_coluna(self, coluna, cor):
+
+        nome_coluna = self.obter_nome_coluna(coluna)
+
+        if not nome_coluna:
+            return
+
+        if cor is None or not cor.isValid():
+            self.cores_colunas.pop(nome_coluna, None)
+            cor = None
+        else:
+            self.cores_colunas[nome_coluna] = QColor(cor)
+
+        for linha in range(self.tabela.rowCount()):
+
+            item = self.tabela.item(linha, coluna)
+
+            if item is not None:
+                item.setBackground(
+                    cor if cor is not None else QColor(255, 255, 255)
+                )
+
+            widget = self.tabela.cellWidget(linha, coluna)
+
+            if isinstance(widget, QLabel):
+
+                if cor is None:
+                    widget.setStyleSheet(
+                        """
+                        QLabel {
+                            background-color: transparent;
+                            color: black;
+                            padding: 2px;
+                        }
+                        """
+                    )
+                else:
+                    widget.setStyleSheet(
+                        """
+                        QLabel {
+                            background-color: %s;
+                            color: black;
+                            padding: 2px;
+                        }
+                        """ % cor.name()
+                    )
+
+        self.salvar_configuracao_silencioso()
+
+
+    def salvar_configuracao_silencioso(self):
+
+        try:
+
+            header = self.tabela.horizontalHeader()
+
+            ordem = [
+                header.logicalIndex(visual)
+                for visual in range(self.tabela.columnCount())
+            ]
+
+            larguras = {
+                str(coluna): self.tabela.columnWidth(coluna)
+                for coluna in range(self.tabela.columnCount())
+            }
+
+            ocultas = [
+                coluna
+                for coluna in range(self.tabela.columnCount())
+                if self.tabela.isColumnHidden(coluna)
+            ]
+
+            alinhamentos = {
+                str(coluna): int(alinhamento)
+                for coluna, alinhamento in self.alinhamento_colunas.items()
+            }
+
+            cores = {
+                str(nome): cor.name()
+                for nome, cor in self.cores_colunas.items()
+                if isinstance(cor, QColor) and cor.isValid()
+            }
+
+            configuracao = {
+                "versao": VERSAO_CONFIG_TABELA,
+                "ordem": ordem,
+                "larguras": larguras,
+                "ocultas": ocultas,
+                "fixadas": list(self.colunas_fixadas),
+                "alinhamentos": alinhamentos,
+                "cores": cores,
+            }
+
+            with open(
+                self.arquivo_configuracao,
+                "w",
+                encoding="utf-8"
+            ) as arquivo:
+
+                json.dump(
+                    configuracao,
+                    arquivo,
+                    ensure_ascii=False,
+                    indent=4
+                )
+
+        except Exception:
+            pass
+
+
+    def escolher_cor_coluna(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        nome_coluna = self.obter_nome_coluna(coluna)
+
+        cor_atual = self.cores_colunas.get(
+            nome_coluna,
+            QColor(255, 255, 255)
+        )
+
+        cor = QColorDialog.getColor(
+            cor_atual,
+            self,
+            "Escolher cor da coluna"
+        )
+
+        if cor.isValid():
+            self.aplicar_cor_coluna(
+                coluna,
+                cor
+            )
+
+
+    def remover_cor_coluna(self):
+
+        coluna = self.obter_coluna_selecionada()
+
+        if coluna < 0:
+            return
+
+        self.aplicar_cor_coluna(
+            coluna,
+            None
+        )
+
+
+    # ========================================================
     # MENU COLUNA
     # ========================================================
 
@@ -3372,6 +3566,22 @@ class Janela(QMainWindow):
             "Organizar / Ajustar ao conteudo",
             self.coluna_organizar
         )
+
+        menu.addSeparator()
+
+        self.criar_acao_coluna(
+            menu,
+            "Cor",
+            self.escolher_cor_coluna
+        )
+
+        self.criar_acao_coluna(
+            menu,
+            "Sem cor",
+            self.remover_cor_coluna
+        )
+
+        menu.addSeparator()
 
         self.criar_acao_coluna(
             menu,
@@ -5762,15 +5972,29 @@ class Janela(QMainWindow):
                         True
                     )
 
-                    label.setStyleSheet(
-                        """
-                        QLabel {
-                            background-color: transparent;
-                            color: black;
-                            padding: 2px;
-                        }
-                        """
-                    )
+                    nome_coluna = self.obter_nome_coluna(coluna)
+                    cor_coluna = self.cores_colunas.get(nome_coluna)
+
+                    if cor_coluna is not None and cor_coluna.isValid():
+                        label.setStyleSheet(
+                            """
+                            QLabel {
+                                background-color: %s;
+                                color: black;
+                                padding: 2px;
+                            }
+                            """ % cor_coluna.name()
+                        )
+                    else:
+                        label.setStyleSheet(
+                            """
+                            QLabel {
+                                background-color: transparent;
+                                color: black;
+                                padding: 2px;
+                            }
+                            """
+                        )
 
                     label.setAlignment(
                         Qt.AlignmentFlag(
@@ -5824,36 +6048,11 @@ class Janela(QMainWindow):
                     )
                 )
 
-                if coluna == 4:
+                nome_coluna = self.obter_nome_coluna(coluna)
+                cor_coluna = self.cores_colunas.get(nome_coluna)
 
-                    item.setBackground(
-                        QColor(
-                            255,
-                            150,
-                            150
-                        )
-                    )
-
-                if coluna == 12:
-
-                    # MULT: azul claro
-                    item.setBackground(
-                        QColor(
-                            173,
-                            216,
-                            230
-                        )
-                    )
-
-                if coluna == 14:
-
-                    item.setBackground(
-                        QColor(
-                            255,
-                            150,
-                            150
-                        )
-                    )
+                if cor_coluna is not None and cor_coluna.isValid():
+                    item.setBackground(cor_coluna)
 
                 self.tabela.setItem(
                     linha,
