@@ -2527,7 +2527,7 @@ class Janela(QMainWindow):
             "Pr Cpra ERP",
             "Qtd Ult Ent",
             "Pr Ult Cpra Unit.",
-            "Pr Ult Cpra Ant."
+            "Pr Ult Cpra Ant",
             "Dt Ult Compra",
             "Cod F",
             "Descricao XML",
@@ -5722,9 +5722,9 @@ class Janela(QMainWindow):
 
                 f"R$ {preco_ultima_compra_unit:.2f}",
                 
-                f"R$ {float(p.get('preco_ultima_compra_ant', 0) or 0):.2f}",
+                f"R$ {float(p.get('prun_prultcompant', 0) or 0):.2f}",
 
-                p.get("data_ultima_compra", ""),
+                p.get("prun_dtultcomp", ""),
 
                 p.get(
                     "codigo",
