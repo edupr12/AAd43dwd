@@ -3209,14 +3209,20 @@ class Janela(QMainWindow):
                 cor_coluna = self.cores_colunas.get(nome_coluna)
 
                 if cor_coluna is not None and cor_coluna.isValid():
+                    cor_texto = (
+                        "white"
+                        if cor_coluna.lightness() < 128
+                        else "black"
+                    )
+
                     widget.setStyleSheet(
                         """
                         QLabel {
                             background-color: %s;
-                            color: black;
+                            color: %s;
                             padding: 2px;
                         }
-                        """ % cor_coluna.name()
+                        """ % (cor_coluna.name(), cor_texto)
                     )
                 else:
                     widget.setStyleSheet(
@@ -6027,14 +6033,20 @@ class Janela(QMainWindow):
                     cor_coluna = self.cores_colunas.get(nome_coluna)
 
                     if cor_coluna is not None and cor_coluna.isValid():
+                        cor_texto = (
+                            "white"
+                            if cor_coluna.lightness() < 128
+                            else "black"
+                        )
+
                         label.setStyleSheet(
                             """
                             QLabel {
                                 background-color: %s;
-                                color: black;
+                                color: %s;
                                 padding: 2px;
                             }
-                            """ % cor_coluna.name()
+                            """ % (cor_coluna.name(), cor_texto)
                         )
                     else:
                         label.setStyleSheet(
