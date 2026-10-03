@@ -3351,6 +3351,15 @@ class Janela(QMainWindow):
         else:
             self.cores_colunas[nome_coluna] = QColor(cor)
 
+        if cor is not None:
+            cor_texto = (
+                "white"
+                if cor.lightness() < 128
+                else "black"
+            )
+        else:
+            cor_texto = "black"
+
         for linha in range(self.tabela.rowCount()):
 
             item = self.tabela.item(linha, coluna)
@@ -3358,6 +3367,9 @@ class Janela(QMainWindow):
             if item is not None:
                 item.setBackground(
                     cor if cor is not None else QColor(255, 255, 255)
+                )
+                item.setForeground(
+                    QColor(cor_texto)
                 )
 
             widget = self.tabela.cellWidget(linha, coluna)
@@ -3379,10 +3391,10 @@ class Janela(QMainWindow):
                         """
                         QLabel {
                             background-color: %s;
-                            color: black;
+                            color: %s;
                             padding: 2px;
                         }
-                        """ % cor.name()
+                        """ % (cor.name(), cor_texto)
                     )
 
         self.salvar_configuracao_silencioso()
