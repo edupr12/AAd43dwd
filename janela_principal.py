@@ -6127,7 +6127,14 @@ class Janela(QMainWindow):
                 cor_coluna = self.cores_colunas.get(nome_coluna)
 
                 if cor_coluna is not None and cor_coluna.isValid():
+                    cor_texto = (
+                        "white"
+                        if cor_coluna.lightness() < 128
+                        else "black"
+                    )
+
                     item.setBackground(cor_coluna)
+                    item.setForeground(QColor(cor_texto))
 
                 self.tabela.setItem(
                     linha,
