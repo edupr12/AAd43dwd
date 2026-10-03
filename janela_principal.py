@@ -5722,9 +5722,9 @@ class Janela(QMainWindow):
 
                 f"R$ {preco_ultima_compra_unit:.2f}",
                 
-                f"R$ {preco_ultima_compra_ant:.2f}",
-                
-                data_ultima_compra,
+                f"R$ {float(p.get('preco_ultima_compra_ant', 0) or 0):.2f}",
+
+                p.get("data_ultima_compra", ""),
 
                 p.get(
                     "codigo",
