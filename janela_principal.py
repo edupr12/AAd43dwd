@@ -5002,6 +5002,10 @@ class Janela(QMainWindow):
 
             self.filtrar()
 
+            # Ao abrir um XML, cada coluna passa a ter a largura
+            # necessaria para mostrar seu maior conteudo sem cortar.
+            self.ajustar_colunas_ao_conteudo()
+
             if mostrar_sucesso:
 
                 chave_texto = (
@@ -5187,6 +5191,10 @@ class Janela(QMainWindow):
 
         self.filtrar()
 
+        # Ao abrir uma pasta de XMLs, ajusta novamente as colunas
+        # de acordo com o maior conteudo carregado.
+        self.ajustar_colunas_ao_conteudo()
+
     # ========================================================
     # RESUMO
     # ========================================================
@@ -5227,6 +5235,35 @@ class Janela(QMainWindow):
         return (
             f"{qcom:g} {ucom}"
         ).strip()
+
+    # ========================================================
+    # AJUSTAR COLUNAS AO CONTEUDO
+    # ========================================================
+
+    def ajustar_colunas_ao_conteudo(self):
+
+        header = self.tabela.horizontalHeader()
+
+        for coluna in range(self.tabela.columnCount()):
+
+            if self.tabela.isColumnHidden(coluna):
+                continue
+
+            # Colunas fixadas mantem a largura escolhida pelo usuario.
+            if coluna in self.colunas_fixadas:
+                continue
+
+            self.tabela.resizeColumnToContents(coluna)
+
+            largura = self.tabela.columnWidth(coluna)
+
+            # Pequena folga para evitar que o ultimo caractere fique
+            # encostado ou cortado pela borda da celula.
+            self.tabela.setColumnWidth(
+                coluna,
+                max(40, largura + 12)
+            )
+
 
     # ========================================================
     # FILTRO
