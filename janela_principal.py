@@ -69,6 +69,16 @@ SENHA_ACESSO = os.getenv(
 # CAMPO ANIMADO
 # ============================================================
 
+# Ordem visual padrão das 18 colunas.
+# Os índices são os índices lógicos usados pela tabela e pelas rotinas internas.
+ORDEM_PADRAO_COLUNAS = [
+    13, 8, 9, 10, 4, 5, 6, 3, 12,
+    16, 15, 14, 0, 1, 2, 7, 17, 11
+]
+
+VERSAO_CONFIG_TABELA = 2
+
+
 class CampoAnimado(QLineEdit):
 
     def __init__(self, parent=None):
@@ -2797,12 +2807,8 @@ class Janela(QMainWindow):
                 self.tabela.columnCount()
             ):
 
-                logico = header.logicalIndex(
-                    visual
-                )
-
                 ordem.append(
-                    logico
+                    header.logicalIndex(visual)
                 )
 
             larguras = {}
@@ -2814,22 +2820,13 @@ class Janela(QMainWindow):
             ):
 
                 larguras[str(coluna)] = (
-                    self.tabela.columnWidth(
-                        coluna
-                    )
+                    self.tabela.columnWidth(coluna)
                 )
 
-                if self.tabela.isColumnHidden(
-                    coluna
-                ):
+                if self.tabela.isColumnHidden(coluna):
+                    ocultas.append(coluna)
 
-                    ocultas.append(
-                        coluna
-                    )
-
-            fixadas = list(
-                self.colunas_fixadas
-            )
+            fixadas = list(self.colunas_fixadas)
 
             alinhamentos = {}
 
@@ -2837,11 +2834,10 @@ class Janela(QMainWindow):
                 self.alinhamento_colunas.items()
             ):
 
-                alinhamentos[str(coluna)] = (
-                    int(alinhamento)
-                )
+                alinhamentos[str(coluna)] = int(alinhamento)
 
             configuracao = {
+                "versao": VERSAO_CONFIG_TABELA,
                 "ordem": ordem,
                 "larguras": larguras,
                 "ocultas": ocultas,
@@ -2880,11 +2876,33 @@ class Janela(QMainWindow):
     # CARREGAR CONFIGURAÇÃO
     # ========================================================
 
+    def aplicar_ordem_padrao(self):
+
+        header = self.tabela.horizontalHeader()
+
+        for visual_destino, coluna_logica in enumerate(
+            ORDEM_PADRAO_COLUNAS
+        ):
+
+            visual_atual = header.visualIndex(
+                coluna_logica
+            )
+
+            if visual_atual != visual_destino:
+
+                header.moveSection(
+                    visual_atual,
+                    visual_destino
+                )
+
     def carregar_configuracao(self):
 
         if not os.path.exists(
             self.arquivo_configuracao
         ):
+
+            self.aplicar_ordem_padrao()
+
             return
 
         try:
@@ -2895,43 +2913,38 @@ class Janela(QMainWindow):
                 encoding="utf-8"
             ) as arquivo:
 
-                configuracao = json.load(
-                    arquivo
-                )
+                configuracao = json.load(arquivo)
+
+            versao = int(
+                configuracao.get("versao", 0)
+            )
+
+            if versao != VERSAO_CONFIG_TABELA:
+
+                self.aplicar_ordem_padrao()
+
+                return
 
             header = self.tabela.horizontalHeader()
 
-            ordem = configuracao.get(
-                "ordem",
-                []
-            )
+            ordem = [
+                int(coluna)
+                for coluna in configuracao.get("ordem", [])
+            ]
 
-            # Compatibilidade com configurações antigas.
-            # A versão anterior tinha 15 colunas. A nova coluna QUANT
-            # foi inserida na posição lógica 8, logo após Emb (7).
-            if len(ordem) == 15 and self.tabela.columnCount() == 16:
-                ordem = [
-                    int(coluna) + 1 if int(coluna) >= 8 else int(coluna)
-                    for coluna in ordem
-                ]
+            if (
+                len(ordem) != self.tabela.columnCount()
+                or sorted(ordem)
+                != list(range(self.tabela.columnCount()))
+            ):
 
-                try:
-                    pos_emb = ordem.index(7)
-                    ordem.insert(pos_emb + 1, 8)
-                except ValueError:
-                    ordem.append(8)
+                self.aplicar_ordem_padrao()
 
-            if len(
-                ordem
-            ) == self.tabela.columnCount():
+            else:
 
-                for visual_destino, logico in enumerate(
-                    ordem
-                ):
+                for visual_destino, logico in enumerate(ordem):
 
-                    visual_atual = header.visualIndex(
-                        int(logico)
-                    )
+                    visual_atual = header.visualIndex(logico)
 
                     if visual_atual != visual_destino:
 
@@ -2940,22 +2953,11 @@ class Janela(QMainWindow):
                             visual_destino
                         )
 
-            larguras = configuracao.get(
-                "larguras",
-                {}
-            )
-
-            if len(configuracao.get("ordem", [])) == 15 and self.tabela.columnCount() == 16:
-                larguras = {
-                    str(int(coluna) + 1 if int(coluna) >= 8 else int(coluna)): largura
-                    for coluna, largura in larguras.items()
-                }
+            larguras = configuracao.get("larguras", {})
 
             for coluna, largura in larguras.items():
 
-                coluna = int(
-                    coluna
-                )
+                coluna = int(coluna)
 
                 if 0 <= coluna < self.tabela.columnCount():
 
@@ -2964,22 +2966,11 @@ class Janela(QMainWindow):
                         int(largura)
                     )
 
-            ocultas = configuracao.get(
-                "ocultas",
-                []
-            )
-
-            if len(configuracao.get("ordem", [])) == 15 and self.tabela.columnCount() == 16:
-                ocultas = [
-                    int(coluna) + 1 if int(coluna) >= 8 else int(coluna)
-                    for coluna in ocultas
-                ]
+            ocultas = configuracao.get("ocultas", [])
 
             for coluna in ocultas:
 
-                coluna = int(
-                    coluna
-                )
+                coluna = int(coluna)
 
                 if 0 <= coluna < self.tabela.columnCount():
 
@@ -2988,55 +2979,31 @@ class Janela(QMainWindow):
                         True
                     )
 
-            alinhamentos = configuracao.get(
-                "alinhamentos",
-                {}
-            )
+            alinhamentos = configuracao.get("alinhamentos", {})
 
             self.alinhamento_colunas.clear()
-
-            config_antiga_15 = (
-                len(configuracao.get("ordem", [])) == 15
-                and self.tabela.columnCount() == 18
-            )
 
             for coluna, alinhamento in alinhamentos.items():
 
                 coluna = int(coluna)
 
-                if config_antiga_15 and coluna >= 8:
-                    coluna += 1
+                if 0 <= coluna < self.tabela.columnCount():
 
-                self.alinhamento_colunas[
-                    coluna
-                ] = Qt.AlignmentFlag(
-                    int(alinhamento)
-                )
+                    self.alinhamento_colunas[coluna] = (
+                        Qt.AlignmentFlag(int(alinhamento))
+                    )
 
-            fixadas = configuracao.get(
-                "fixadas",
-                []
-            )
-
-            if len(configuracao.get("ordem", [])) == 15 and self.tabela.columnCount() == 16:
-                fixadas = [
-                    int(coluna) + 1 if int(coluna) >= 8 else int(coluna)
-                    for coluna in fixadas
-                ]
+            fixadas = configuracao.get("fixadas", [])
 
             self.colunas_fixadas.clear()
 
             for coluna in fixadas:
 
-                coluna = int(
-                    coluna
-                )
+                coluna = int(coluna)
 
                 if 0 <= coluna < self.tabela.columnCount():
 
-                    largura = self.tabela.columnWidth(
-                        coluna
-                    )
+                    largura = self.tabela.columnWidth(coluna)
 
                     header.setSectionResizeMode(
                         coluna,
@@ -3048,14 +3015,13 @@ class Janela(QMainWindow):
                         largura
                     )
 
-                    self.colunas_fixadas.add(
-                        coluna
-                    )
+                    self.colunas_fixadas.add(coluna)
 
         except Exception:
-            pass
 
-    # ========================================================
+            self.aplicar_ordem_padrao()
+
+        # ========================================================
     # MENU CABEÇALHO
     # ========================================================
 
@@ -5324,7 +5290,7 @@ class Janela(QMainWindow):
             )
             return
 
-        item_ean = self.tabela.item(linha, 15)
+        item_ean = self.tabela.item(linha, 17)
         if item_ean is None:
             QMessageBox.information(
                 self,
@@ -5345,10 +5311,10 @@ class Janela(QMainWindow):
         if ean in self._pesquisa_lote_pendentes:
             return
 
-        item = self.tabela.item(linha, 9)
+        item = self.tabela.item(linha, 11)
         if item is None:
             item = QTableWidgetItem()
-            self.tabela.setItem(linha, 9, item)
+            self.tabela.setItem(linha, 11, item)
         item.setText("Pesquisando...")
 
         self.btPesquisarEAN.setEnabled(False)
@@ -5365,8 +5331,8 @@ class Janela(QMainWindow):
 
         for linha in range(self.tabela.rowCount()):
             # Coluna 15 = Cod Barras XML.
-            item_ean = self.tabela.item(linha, 15)
-            item_qtd = self.tabela.item(linha, 9)
+            item_ean = self.tabela.item(linha, 17)
+            item_qtd = self.tabela.item(linha, 11)
             if item_ean is None:
                 continue
 
@@ -5375,7 +5341,7 @@ class Janela(QMainWindow):
                 continue
 
             texto_qtd = item_qtd.text().strip().lower() if item_qtd else ""
-            embalagem = self.tabela.item(linha, 7)
+            embalagem = self.tabela.item(linha, 9)
             emb = embalagem.text().strip().upper() if embalagem else ""
 
             # Se já existe um resultado salvo localmente, não pesquisa novamente.
@@ -5415,15 +5381,15 @@ class Janela(QMainWindow):
 
         for linha in range(self.tabela.rowCount()):
             # Coluna 15 = Cod Barras XML.
-            item_ean = self.tabela.item(linha, 15)
+            item_ean = self.tabela.item(linha, 17)
             if item_ean is None:
                 continue
             ean = _normalizar_ean(item_ean.text())
             if ean in self._pesquisa_lote_pendentes:
-                item = self.tabela.item(linha, 9)
+                item = self.tabela.item(linha, 11)
                 if item is None:
                     item = QTableWidgetItem()
-                    self.tabela.setItem(linha, 9, item)
+                    self.tabela.setItem(linha, 11, item)
                 item.setText("Pesquisando...")
 
         # O QThreadPool usa os workers simultaneamente.
@@ -5441,7 +5407,7 @@ class Janela(QMainWindow):
         eans = set()
 
         for linha in range(self.tabela.rowCount()):
-            item_ean = self.tabela.item(linha, 15)
+            item_ean = self.tabela.item(linha, 17)
             if item_ean is None:
                 continue
 
@@ -5454,7 +5420,7 @@ class Janela(QMainWindow):
             if obter_embalagem_local(self._base_embalagens, ean):
                 continue
 
-            item_qtd_emb = self.tabela.item(linha, 9)
+            item_qtd_emb = self.tabela.item(linha, 11)
             texto = item_qtd_emb.text().strip().lower() if item_qtd_emb else ""
             if texto not in (
                 "",
@@ -5469,14 +5435,14 @@ class Janela(QMainWindow):
 
         for ean in eans:
             for linha in range(self.tabela.rowCount()):
-                item_ean = self.tabela.item(linha, 15)
+                item_ean = self.tabela.item(linha, 17)
                 if item_ean is None or _normalizar_ean(item_ean.text()) != ean:
                     continue
 
-                item = self.tabela.item(linha, 9)
+                item = self.tabela.item(linha, 11)
                 if item is None:
                     item = QTableWidgetItem()
-                    self.tabela.setItem(linha, 9, item)
+                    self.tabela.setItem(linha, 11, item)
                 item.setText("Pesquisando...")
                 item.setToolTip("Pesquisando a quantidade por embalagem pelo EAN...")
                 item.setTextAlignment(
@@ -5514,7 +5480,7 @@ class Janela(QMainWindow):
             salvar_base_embalagens(self._base_embalagens)
 
         for linha in range(self.tabela.rowCount()):
-            item_ean = self.tabela.item(linha, 15)
+            item_ean = self.tabela.item(linha, 17)
             if item_ean is None:
                 continue
             if _normalizar_ean(item_ean.text()) != ean:
@@ -5522,10 +5488,10 @@ class Janela(QMainWindow):
 
             # Coluna 9 = Qtd/Emb.
             # A coluna 8 (QUANT) permanece com qCom/qTrib do XML.
-            item = self.tabela.item(linha, 9)
+            item = self.tabela.item(linha, 11)
             if item is None:
                 item = QTableWidgetItem()
-                self.tabela.setItem(linha, 9, item)
+                self.tabela.setItem(linha, 11, item)
 
             if fator:
                 item.setText(str(fator))
@@ -5765,7 +5731,7 @@ class Janela(QMainWindow):
                 dados
             ):
 
-                if coluna == 6:
+                if coluna == 8:
 
                     texto_formatado = (
                         self.formatar_descricao(
@@ -5868,7 +5834,7 @@ class Janela(QMainWindow):
                         )
                     )
 
-                if coluna == 10:
+                if coluna == 12:
 
                     # MULT: azul claro
                     item.setBackground(
