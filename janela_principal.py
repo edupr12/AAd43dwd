@@ -2652,7 +2652,6 @@ class Janela(QMainWindow):
                 background-color: white;
                 gridline-color: #d0d0d0;
                 selection-background-color: #dcecff;
-                selection-color: black;
             }
 
             QTableWidget::item:hover {
@@ -2661,12 +2660,10 @@ class Janela(QMainWindow):
 
             QTableWidget::item:selected {
                 background-color: #dcecff;
-                color: black;
             }
 
             QTableWidget::item:selected:active {
                 background-color: #dcecff;
-                color: black;
             }
 
             QScrollBar:horizontal {
