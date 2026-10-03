@@ -3205,15 +3205,29 @@ class Janela(QMainWindow):
                     """
                 )
             else:
-                widget.setStyleSheet(
-                    """
-                    QLabel {
-                        background-color: transparent;
-                        color: black;
-                        padding: 2px;
-                    }
-                    """
-                )
+                nome_coluna = self.obter_nome_coluna(coluna)
+                cor_coluna = self.cores_colunas.get(nome_coluna)
+
+                if cor_coluna is not None and cor_coluna.isValid():
+                    widget.setStyleSheet(
+                        """
+                        QLabel {
+                            background-color: %s;
+                            color: black;
+                            padding: 2px;
+                        }
+                        """ % cor_coluna.name()
+                    )
+                else:
+                    widget.setStyleSheet(
+                        """
+                        QLabel {
+                            background-color: transparent;
+                            color: black;
+                            padding: 2px;
+                        }
+                        """
+                    )
 
     def limpar_selecoes_manuais(self):
 
