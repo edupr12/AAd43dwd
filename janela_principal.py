@@ -2539,6 +2539,38 @@ class Janela(QMainWindow):
             self.lblQtd
         )
 
+        # Resumo compacto exibido ao lado do checkbox em tela cheia.
+        # Os textos são copiados dos campos originais para manter a tela principal intacta.
+        self.resumoTelaCheia = QWidget()
+        resumo_layout = QVBoxLayout(self.resumoTelaCheia)
+        resumo_layout.setContentsMargins(4, 0, 4, 0)
+        resumo_layout.setSpacing(2)
+
+        resumo_linha1 = QHBoxLayout()
+        self.lblResumoFornecedor = QLabel()
+        self.lblResumoFornecedor.setStyleSheet("font-weight: bold;")
+        self.lblResumoNF = QLabel()
+        self.lblResumoProdutos = QLabel()
+        resumo_linha1.addWidget(self.lblResumoFornecedor)
+        resumo_linha1.addWidget(self.lblResumoNF)
+        resumo_linha1.addWidget(self.lblResumoProdutos)
+        resumo_linha1.addStretch()
+        resumo_layout.addLayout(resumo_linha1)
+
+        resumo_linha2 = QHBoxLayout()
+        self.lblResumoChave = QLabel()
+        self.lblResumoChave.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.lblResumoPagamento = QLabel()
+        self.lblResumoPagamento.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        resumo_linha2.addWidget(self.lblResumoChave)
+        resumo_linha2.addWidget(self.lblResumoPagamento)
+        resumo_linha2.addStretch()
+        resumo_layout.addLayout(resumo_linha2)
+
+        self.resumoTelaCheia.setMinimumWidth(420)
+        self.resumoTelaCheia.setVisible(False)
+        botoes.insertWidget(8, self.resumoTelaCheia)
+
         # ====================================================
         # TABELA
         # ====================================================
@@ -2781,7 +2813,26 @@ class Janela(QMainWindow):
         ]
 
     def alternar_tela_cheia_tabela(self, ativado):
-        """Amplia a tabela escondendo temporariamente os campos superiores."""
+        """Amplia a tabela e mostra o resumo da nota na faixa superior."""
+        if ativado:
+            fornecedor = self.lblFornecedor.text().strip()
+            fornecedor_arquivo = self.lblFornArquivo.text().strip()
+            nf = self.lblNF.text().strip()
+            partes_fornecedor = [texto for texto in (fornecedor, fornecedor_arquivo) if texto]
+            self.lblResumoFornecedor.setText(" | ".join(partes_fornecedor))
+            self.lblResumoNF.setText(nf)
+            self.lblResumoProdutos.setText(self.lblQtd.text())
+            self.lblResumoChave.setText(
+                "Chave: " + (self.txtChave.text().strip() or "—")
+            )
+            pagamento = self.txtPagamento.text().strip()
+            self.lblResumoPagamento.setText(
+                "Pagamento: " + (pagamento if pagamento else "—")
+            )
+            self.resumoTelaCheia.setVisible(True)
+        else:
+            self.resumoTelaCheia.setVisible(False)
+
         for widget in self._widgets_superiores_tabela:
             widget.setVisible(not ativado)
 
