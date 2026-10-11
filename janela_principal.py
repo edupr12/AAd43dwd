@@ -2547,8 +2547,12 @@ class Janela(QMainWindow):
         resumo_layout.setSpacing(2)
 
         resumo_linha1 = QHBoxLayout()
+        resumo_linha1.setSpacing(14)
         self.lblResumoFornecedor = QLabel()
-        self.lblResumoFornecedor.setStyleSheet("font-weight: bold;")
+        # Mantém o amarelo queimado usado no campo FORN da tela principal.
+        self.lblResumoFornecedor.setStyleSheet(
+            "QLabel { font-weight: bold; color: #d6b300; padding: 2px 4px; }"
+        )
         self.lblResumoNF = QLabel()
         self.lblResumoProdutos = QLabel()
         resumo_linha1.addWidget(self.lblResumoFornecedor)
@@ -2558,10 +2562,22 @@ class Janela(QMainWindow):
         resumo_layout.addLayout(resumo_linha1)
 
         resumo_linha2 = QHBoxLayout()
+        resumo_linha2.setSpacing(14)
         self.lblResumoChave = QLabel()
-        self.lblResumoChave.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.lblResumoPagamento = QLabel()
-        self.lblResumoPagamento.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        # Permite selecionar e copiar os dados do resumo com o mouse/Ctrl+C.
+        for _label_resumo in (
+            self.lblResumoNF,
+            self.lblResumoProdutos,
+            self.lblResumoChave,
+            self.lblResumoPagamento,
+        ):
+            _label_resumo.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            _label_resumo.setCursor(Qt.CursorShape.IBeamCursor)
+
         resumo_linha2.addWidget(self.lblResumoChave)
         resumo_linha2.addWidget(self.lblResumoPagamento)
         resumo_linha2.addStretch()
