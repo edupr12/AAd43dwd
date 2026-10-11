@@ -2320,6 +2320,20 @@ class Janela(QMainWindow):
             self.chkSelecionar
         )
 
+        # Checkbox adicional: amplia a area da tabela sem alterar colunas.
+        self.chkTabelaTelaCheia = CheckBoxAnimado(
+            "Tabela em tela cheia"
+        )
+        self.chkTabelaTelaCheia.setToolTip(
+            "Oculta temporariamente os campos superiores para ampliar a tabela."
+        )
+        self.chkTabelaTelaCheia.toggled.connect(
+            self.alternar_tela_cheia_tabela
+        )
+        botoes.addWidget(
+            self.chkTabelaTelaCheia
+        )
+
         botoes.addStretch()
 
         layout.addLayout(
@@ -2743,6 +2757,39 @@ class Janela(QMainWindow):
         )
 
         self.carregar_configuracao()
+
+        # Guarda os widgets superiores que serão ocultados temporariamente.
+        self._widgets_superiores_tabela = [
+            self.btAbrir,
+            self.btPasta,
+            self.btSalvar,
+            self.btColuna,
+            self.btPesquisarEAN,
+            self.btPesquisarNaoCadastrados,
+            self.chkSelecionar,
+            self.txtPesquisa,
+            self.txtEmbalagem,
+            self.chkEmbDiferenteUN,
+            self.lblFornecedor,
+            self.lblFornArquivo,
+            self.lblNF,
+            self.lblChave,
+            self.txtChave,
+            self.lblPagamento,
+            self.txtPagamento,
+            self.lblQtd,
+        ]
+
+    def alternar_tela_cheia_tabela(self, ativado):
+        """Amplia a tabela escondendo temporariamente os campos superiores."""
+        for widget in self._widgets_superiores_tabela:
+            widget.setVisible(not ativado)
+
+        if ativado:
+            self.showMaximized()
+        else:
+            self.showNormal()
+            self.resize(1300, 750)
 
     # ========================================================
     # FECHAMENTO
